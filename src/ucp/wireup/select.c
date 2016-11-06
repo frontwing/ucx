@@ -126,12 +126,13 @@ static UCS_F_NOINLINE ucs_status_t
 ucp_wireup_select_transport(ucp_ep_h ep, const ucp_address_entry_t *address_list,
                             unsigned address_count, const ucp_wireup_criteria_t *criteria,
                             uint64_t tl_bitmap, uint64_t remote_md_map, int show_error,
-                            ucp_rsc_index_t *rsc_index_p, unsigned *dst_addr_index_p,
-                            double *score_p)
+                            ucp_rsc_index_t *rsc_list_p, unsigned *dst_addr_list_p,
+                            unsigned list_len, double *score_p)
 {
     ucp_worker_h worker = ep->worker;
     ucp_context_h context = worker->context;
     uct_tl_resource_desc_t *resource;
+    ucp_rsc_index_t *rsc_iter_p = 0;
     const ucp_address_entry_t *ae;
     ucp_rsc_index_t rsc_index;
     double score, best_score;
@@ -140,6 +141,7 @@ ucp_wireup_select_transport(ucp_ep_h ep, const ucp_address_entry_t *address_list
     uct_iface_attr_t *iface_attr;
     uct_md_attr_t *md_attr;
     uint64_t addr_index_map;
+    unsigned *dst_addr_iter_p = 0;
     unsigned addr_index;
     int reachable;
     int found;
@@ -247,12 +249,22 @@ ucp_wireup_select_transport(ucp_ep_h ep, const ucp_address_entry_t *address_list
              * comparing priority with the priority of best score */
             if (!found || (score > best_score) ||
                 ((score == best_score) && (priority > best_score_priority))) {
-                *rsc_index_p      = rsc_index;
-                *dst_addr_index_p = ae - address_list;
+                rsc_iter_p        = rsc_list_p;
+                *rsc_iter_p       = rsc_index;
+                dst_addr_iter_p   = dst_addr_list_p;
+                *dst_addr_iter_p  = ae - address_list;
                 *score_p          = score;
                 best_score        = score;
                 best_score_priority = priority;
                 found             = 1;
+            } else if ((score == best_score) &&
+                       (rsc_iter_p - rsc_list_p < list_len - 1)){
+                *rsc_iter_p       = rsc_index;
+                *dst_addr_iter_p  = ae - address_list;
+                rsc_iter_p++;
+                dst_addr_iter_p++;
+                *rsc_iter_p       = 0;
+                *dst_addr_iter_p  = 0;
             }
         }
 
@@ -278,11 +290,15 @@ ucp_wireup_select_transport(ucp_ep_h ep, const ucp_address_entry_t *address_list
         return UCS_ERR_UNREACHABLE;
     }
 
-    ucs_trace("ep %p: selected for %s: " UCT_TL_RESOURCE_DESC_FMT
-              " -> '%s' address[%d],md[%d] score %.2f", ep, criteria->title,
-              UCT_TL_RESOURCE_DESC_ARG(&context->tl_rscs[*rsc_index_p].tl_rsc),
-              ucp_ep_peer_name(ep), *dst_addr_index_p,
-              address_list[*dst_addr_index_p].md_index, best_score);
+    for (rsc_iter_p = rsc_list_p, dst_addr_iter_p = dst_addr_list_p;
+         *rsc_iter_p != 0; rsc_iter_p++, dst_addr_iter_p++) {
+        ucs_trace("ep %p: selected for %s: " UCT_TL_RESOURCE_DESC_FMT
+                  " -> '%s' address[%d],md[%d] score %.2f", ep, criteria->title,
+                  UCT_TL_RESOURCE_DESC_ARG(&context->tl_rscs[*rsc_iter_p].tl_rsc),
+                  ucp_ep_peer_name(ep), *dst_addr_iter_p,
+                  address_list[*dst_addr_iter_p].md_index, best_score);
+    }
+
     return UCS_OK;
 }
 
@@ -361,13 +377,14 @@ ucp_wireup_add_memaccess_lanes(ucp_ep_h ep, unsigned address_count,
                                const ucp_wireup_criteria_t *criteria,
                                uint64_t tl_bitmap, uint32_t usage)
 {
+    ucp_rsc_index_t rsc_list[UCP_MAX_RESOURCES];
+    unsigned addr_iter, addr_idx_list[UCP_MAX_RESOURCES];
     ucp_wireup_criteria_t mem_criteria = *criteria;
     ucp_address_entry_t *address_list_copy;
-    ucp_rsc_index_t rsc_index, dst_md_index;
+    ucp_rsc_index_t dst_md_index;
     size_t address_list_size;
     double score, reg_score;
     uint64_t remote_md_map;
-    unsigned addr_index;
     ucs_status_t status;
     char title[64];
 
@@ -389,13 +406,25 @@ ucp_wireup_add_memaccess_lanes(ucp_ep_h ep, unsigned address_count,
     mem_criteria.remote_md_flags = UCT_MD_FLAG_REG;
     status = ucp_wireup_select_transport(ep, address_list_copy, address_count,
                                          &mem_criteria, tl_bitmap, remote_md_map,
-                                         1, &rsc_index, &addr_index, &score);
+                                         1, &rsc_list, &addr_idx_list,
+                                         UCP_MAX_RESOURCES, &score);
     if (status != UCS_OK) {
         goto out_free_address_list;
     }
 
     dst_md_index = address_list_copy[addr_index].md_index;
     reg_score    = score;
+    for (addr_iter = 0; addr_idx_list[addr_iter] != 0; addr_iter++) {
+        dst_md_index = address_list_copy[addr_idx_list[addr_iter]].md_index;
+
+        /* Add to the list of lanes and remove all occurrences of the remote md
+         * from the address list, to avoid selecting the same remote md again.*/
+        ucp_wireup_add_lane_desc(lane_descs, num_lanes_p,
+                                 rsc_list[addr_iter],
+                                 addr_idx_list[addr_iter],
+                                 dst_md_index, score, usage);
+        remote_md_map &= ~UCS_BIT(dst_md_index);
+    }
 
     /* Add to the list of lanes and remove all occurrences of the remote md
      * from the address list, to avoid selecting the same remote md again.*/
@@ -543,11 +572,14 @@ static ucs_status_t ucp_wireup_add_am_lane(ucp_ep_h ep, unsigned address_count,
                                            ucp_wireup_lane_desc_t *lane_descs,
                                            ucp_lane_index_t *num_lanes_p)
 {
+    ucp_rsc_index_t rsc_list[UCP_MAX_RESOURCES];
+    unsigned addr_list[UCP_MAX_RESOURCES];
     ucp_wireup_criteria_t criteria;
     ucp_rsc_index_t rsc_index;
     ucp_lane_index_t lane;
     ucs_status_t status;
     unsigned addr_index;
+    unsigned addr_iter;
     double score;
     int need_am;
 
@@ -578,14 +610,20 @@ static ucs_status_t ucp_wireup_add_am_lane(ucp_ep_h ep, unsigned address_count,
     }
 
     status = ucp_wireup_select_transport(ep, address_list, address_count, &criteria,
-                                         -1, -1, 1, &rsc_index, &addr_index, &score);
+                                         -1, -1, 1, &rsc_list, &addr_list,
+                                         UCP_MAX_RESOURCES, &score);
     if (status != UCS_OK) {
         return status;
     }
 
-    ucp_wireup_add_lane_desc(lane_descs, num_lanes_p, rsc_index, addr_index,
-                             address_list[addr_index].md_index, score,
-                             UCP_WIREUP_LANE_USAGE_AM);
+    for (addr_iter = 0; addr_list[addr_iter] != 0 ; addr_iter++) {
+        rsc_index = rsc_list[addr_iter];
+        addr_index = addr_list[addr_iter];
+        ucp_wireup_add_lane_desc(lane_descs, num_lanes_p, rsc_index, addr_index,
+                                 address_list[addr_index].md_index, score,
+                                 UCP_WIREUP_LANE_USAGE_AM);
+    }
+
     return UCS_OK;
 }
 
@@ -594,10 +632,13 @@ static ucs_status_t ucp_wireup_add_rndv_lane(ucp_ep_h ep, unsigned address_count
                                              ucp_wireup_lane_desc_t *lane_descs,
                                              ucp_lane_index_t *num_lanes_p)
 {
+    ucp_rsc_index_t rsc_list[UCP_MAX_RESOURCES];
+    unsigned addr_list[UCP_MAX_RESOURCES];
     ucp_wireup_criteria_t criteria;
-    ucp_rsc_index_t rsc_index;
     ucs_status_t status;
+    ucp_rsc_index_t rsc_index;
     unsigned addr_index;
+    unsigned addr_iter;
     double score;
 
     if (!(ucp_ep_get_context_features(ep) & UCP_FEATURE_TAG)) {
@@ -618,14 +659,20 @@ static ucs_status_t ucp_wireup_add_rndv_lane(ucp_ep_h ep, unsigned address_count
     }
 
     status = ucp_wireup_select_transport(ep, address_list, address_count, &criteria,
-                                         -1, -1, 0, &rsc_index, &addr_index, &score);
-    if ((status == UCS_OK) &&
-        /* a temporary workaround to prevent the ugni uct from using rndv */
-        (strstr(ep->worker->context->tl_rscs[rsc_index].tl_rsc.tl_name, "ugni") == NULL)) {
-         ucp_wireup_add_lane_desc(lane_descs, num_lanes_p, rsc_index, addr_index,
-                                 address_list[addr_index].md_index, score,
-                                 UCP_WIREUP_LANE_USAGE_RNDV);
-    }
+                                         -1, -1, 0, &rsc_list, &addr_list,
+                                         UCP_MAX_RESOURCES, &score);
+    if (status == UCS_OK) {
+        for (addr_iter = 0; addr_list[addr_iter] != 0 ; addr_iter++) {
+            rsc_index = rsc_list[addr_iter];
+            addr_index = addr_list[addr_iter];
+            /* a temporary workaround to prevent the ugni uct from using rndv */
+            if (strstr(ep->worker->context->tl_rscs[rsc_index].tl_rsc.tl_name, "ugni") == NULL) {
+                ucp_wireup_add_lane_desc(lane_descs, num_lanes_p, rsc_index,
+                                         addr_index, address_list[addr_index].md_index,
+                                         score, UCP_WIREUP_LANE_USAGE_RNDV);
+            }
+        }
+
 
     return UCS_OK;
 }
@@ -809,5 +856,5 @@ ucs_status_t ucp_wireup_select_aux_transport(ucp_ep_h ep,
     double score;
     return ucp_wireup_select_transport(ep, address_list, address_count,
                                        &ucp_wireup_aux_criteria, -1, -1, 1,
-                                       rsc_index_p, addr_index_p, &score);
+                                       rsc_index_p, addr_index_p, 1, &score);
 }

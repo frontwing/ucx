@@ -25,34 +25,34 @@ enum {
     UCP_EP_FLAG_CONNECT_REP_SENT = UCS_BIT(3), /* Debug: Connection reply was sent */
 };
 
-
-/* Lanes configuration.
- * Every lane is a UCT endpoint to the same remote worker.
- */
-typedef struct ucp_ep_config_key {
-    /* Lookup for rma and amo lanes:
+typedef struct ucp_md_lane_selection {
+    ucp_lane_index_t       lanes[UCP_MAX_LANES];
+    /* Lane-map lookup for lanes:
      * Every group of UCP_MD_INDEX_BITS consecutive bits in the map (in total
      * UCP_MAX_LANES such groups) is a bitmap. All bits in it are zero, except
      * the md_index-th bit of that lane. If the lane is unused, all bits are zero.
      * For example, the bitmap '00000100' means the lane remote md_index is 2.
      * It allows to quickly lookup
      */
-    ucp_md_lane_map_t      rma_lane_map;
+    ucp_md_lane_map_t      lane_map;
+} ucp_md_lane_selection_t;
 
-    /* AMO lanes point to another indirect lookup array */
-    ucp_md_lane_map_t      amo_lane_map;
-    ucp_lane_index_t       amo_lanes[UCP_MAX_LANES];
+/* Lanes configuration.
+ * Every lane is a UCT endpoint to the same remote worker.
+ */
+typedef struct ucp_ep_config_key {
+    ucp_md_lane_selection_t am;    /* Lanes for active messages (can be empty) */
+    ucp_md_lane_selection_t rma;   /* Lanes remote memory access */
+    ucp_md_lane_selection_t amo;   /* Lanes for atomics */
+    ucp_md_lane_selection_t rndv;  /* Lanes for Rendezvous (can be empty) */
+    ucp_md_lane_selection_t wireup;/* Lanes for wireup messages (can be empty) */
 
     /* Bitmap of remote mds which are reachable from this endpoint (with any set
      * of transports which could be selected in the future)
      */
-    ucp_md_map_t           reachable_md_map;
-
-    ucp_lane_index_t       am_lane;             /* Lane for AM (can be NULL) */
-    ucp_lane_index_t       rndv_lane;           /* Lane for Rendezvous (can be NULL) */
-    ucp_lane_index_t       wireup_msg_lane;     /* Lane for wireup messages (can be NULL) */
-    ucp_rsc_index_t        lanes[UCP_MAX_LANES];/* Resource index for every lane */
-    ucp_lane_index_t       num_lanes;           /* Number of lanes */
+    ucp_md_map_t            reachable_md_map;
+    ucp_rsc_index_t         lanes[UCP_MAX_LANES];/* Resource index for every lane */
+    ucp_lane_index_t        num_lanes;           /* Number of lanes */
 } ucp_ep_config_key_t;
 
 
