@@ -50,7 +50,6 @@ typedef struct uct_ib_odp_config {
     size_t               max_size;   /**< Maximal memory region size for ODP */
 } uct_ib_odp_config_t;
 
-
 typedef struct uct_ib_mem {
     uint32_t                lkey;
     uint32_t                flags;
@@ -64,6 +63,7 @@ typedef struct uct_ib_mem {
 typedef struct uct_ib_md {
     uct_md_t                 super;
     ucs_rcache_t             *rcache;   /**< Registration cache (can be NULL) */
+    size_t                   trim_size; /**< Latest trim size */
     struct ibv_pd            *pd;       /**< IB memory domain */
     uct_ib_device_t          dev;       /**< IB device */
     uct_linear_growth_t      reg_cost;  /**< Memory registration cost */
@@ -92,6 +92,7 @@ typedef struct uct_ib_md_config {
         size_t               alignment;    /**< Force address alignment */
         unsigned             event_prio;   /**< Memory events priority */
         double               overhead;     /**< Lookup overhead estimation */
+        ucs_ternary_value_t  adaptive_trim;/**< Enable adaptive trimming */
     } rcache;
 
     uct_linear_growth_t      uc_reg_cost;  /**< Memory registration cost estimation

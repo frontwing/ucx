@@ -83,6 +83,9 @@ static ucs_config_field_t uct_ib_md_config_table[] = {
   {"MEM_REG_GROWTH", "0.06ns", "Memory registration growth rate", /* TODO take default from device */
    ucs_offsetof(uct_ib_md_config_t, uc_reg_cost.growth), UCS_CONFIG_TYPE_TIME},
 
+  {"ADAPTIVE_TRIM", "try", "Enable adaptive heap trimming optimization",
+   ucs_offsetof(uct_ib_md_config_t, rcache.adaptive_trim), UCS_CONFIG_TYPE_TERNARY},
+
   {"FORK_INIT", "try",
    "Initialize a fork-safe IB library with ibv_fork_init().",
    ucs_offsetof(uct_ib_md_config_t, fork_init), UCS_CONFIG_TYPE_TERNARY},
@@ -1177,6 +1180,8 @@ uct_ib_md_open(const char *md_name, const uct_md_config_t *uct_md_config, uct_md
         rcache_params.ucm_event_priority = md_config->rcache.event_prio;
         rcache_params.context            = md;
         rcache_params.ops                = &uct_ib_rcache_ops;
+        rcache_params.use_adaptive_trim  =
+                (md_config->rcache.adaptive_trim != UCS_NO);
         status = ucs_rcache_create(&rcache_params, uct_ib_device_name(&md->dev)
                                    UCS_STATS_ARG(md->stats), &md->rcache);
         if (status == UCS_OK) {

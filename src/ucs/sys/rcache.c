@@ -14,6 +14,7 @@
 #include <ucs/sys/sys.h>
 #include <ucm/api/ucm.h>
 
+#define DEFAULT_INITIAL_TOP_PAD (128 * 1024)
 
 #define ucs_rcache_region_log(_level, _message, ...) \
     do { \
@@ -239,6 +240,13 @@ static void ucs_rcache_check_inv_queue(ucs_rcache_t *rcache)
     pthread_spin_unlock(&rcache->inv_lock);
 }
 
+static void ucs_rcache_update_heap_bound(ucm_event_type_t event_type,
+        ucm_event_t *event, void *arg)
+{
+    ucs_rcache_t *rcache = arg;
+    rcache->trim.heap_bound = (ucs_pgt_addr_t)event->sbrk.result;
+}
+
 static void ucs_rcache_unmapped_callback(ucm_event_type_t event_type,
                                          ucm_event_t *event, void *arg)
 {
@@ -377,6 +385,13 @@ ucs_rcache_check_overlap(ucs_rcache_t *rcache, ucs_pgt_addr_t *start,
     return UCS_OK;
 }
 
+static int ucs_rcache_adjust_trim(ucs_rcache_t *rcache, size_t buffer_size)
+{
+    struct mallinfo mi = mallinfo();
+    rcache->trim.top_pad += (buffer_size - mi.keepcost);
+    return mallopt(M_TOP_PAD, rcache->trim.top_pad);
+}
+
 static ucs_status_t
 ucs_rcache_create_region(ucs_rcache_t *rcache, void *address, size_t length,
                          int prot, void *arg, ucs_rcache_region_t **region_p)
@@ -448,6 +463,11 @@ ucs_rcache_create_region(ucs_rcache_t *rcache, void *address, size_t length,
         ucs_rcache_region_debug(rcache, region, "created with status %s",
                                 ucs_status_string(status));
         goto out_unlock;
+    }
+
+    if ((rcache->params.use_adaptive_trim) &&
+        (start < rcache->trim.heap_bound)) {
+        ucs_rcache_adjust_trim(rcache, end - start);
     }
 
     region->flags   |= UCS_RCACHE_REGION_FLAG_REGISTERED;
@@ -583,9 +603,22 @@ static UCS_CLASS_INIT_FUNC(ucs_rcache_t, const ucs_rcache_params_t *params,
         goto err_destroy_mp;
     }
 
+    if (params->use_adaptive_trim) {
+        self->trim.heap_bound = 0;
+        self->trim.top_pad = DEFAULT_INITIAL_TOP_PAD;
+        status = ucm_set_event_handler(UCM_EVENT_SBRK, params->ucm_event_priority,
+                                       ucs_rcache_update_heap_bound, self);
+        if (status != UCS_OK) {
+            goto err_destroy_ev_unmap;
+        }
+    }
+
     ucs_queue_head_init(&self->inv_q);
     return UCS_OK;
 
+err_destroy_ev_unmap:
+    ucm_unset_event_handler(UCM_EVENT_VM_UNMAPPED,
+            ucs_rcache_unmapped_callback, self);
 err_destroy_mp:
     ucs_mpool_cleanup(&self->inv_mp, 1);
 err_cleanup_pgtable:

@@ -87,6 +87,7 @@ struct ucs_rcache_params {
                                                      Must be smaller or equal to
                                                      system page size. */
     int                    ucm_event_priority;  /**< Priority of memory events */
+    int                    use_adaptive_trim;   /**< Enable adaptive heap trimming */
     const ucs_rcache_ops_t *ops;                /**< Memory operations functions */
     void                   *context;            /**< User-defined context that will
                                                      be passed to mem_reg/mem_dereg */
@@ -100,6 +101,12 @@ struct ucs_rcache_region {
     ucs_status_t           status;   /**< Current status code */
     uint8_t                prot;     /**< Protection bits */
     uint16_t               flags;    /**< Status flags. Protected by page table lock. */
+};
+
+
+struct ucs_trim_state {
+    ucs_pgt_addr_t         heap_bound; /**< Current boundary of the heap */
+    unsigned long          top_pad;    /**< Current value of M_TOP_PAD */
 };
 
 
@@ -120,6 +127,7 @@ struct ucs_rcache {
                                           The backing storage is original mmap()
                                           which does not generate memory events */
     char                   *name;
+    struct ucs_trim_state  trim;     /**< State of the adaptive trim */
 };
 
 

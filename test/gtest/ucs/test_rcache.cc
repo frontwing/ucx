@@ -8,6 +8,7 @@
 extern "C" {
 #include <ucs/arch/atomic.h>
 #include <ucs/sys/rcache.h>
+#include <ucs/time/time.h>
 #include <ucs/sys/sys.h>
 }
 
@@ -35,6 +36,7 @@ protected:
             sizeof(region),
             UCS_PGT_ADDR_ALIGN,
             1000,
+            1,
             &ops,
             reinterpret_cast<void*>(this)
         };
@@ -472,5 +474,106 @@ UCS_MT_TEST_F(test_rcache_no_register, register_failure, 10) {
     EXPECT_EQ(UCS_ERR_IO_ERROR, status);
     EXPECT_EQ(0u, m_reg_count);
 
+    free(ptr);
+}
+
+/*
+ * The memory consumption test below evaluates the solution for applications
+ * with frequent memory allocation patters using memory hooks. This test
+ * function tests the memory consumption is different scenarios of app memory
+ * allocation patterns regarding the buffers used for communication with UCX.
+ *
+ * The problem manifests when an app frequently malloc()-s new large buffers
+ * and sends them (or receives into them), causing UCX to prefer zero-copy
+ * and register them (or search the registration cache for it).
+ * Since UCX hooks mmap()/munmap()/sbrk() and not malloc()/free(),
+ * such memory is considered taken even after the user calls free(),
+ * because (g)libc keeps it for future calls to malloc().
+ *
+ * A manual work-around would be to set some glibc parameters:
+ * M_MMAP_THRESHOLD to be DEFAULT_MMAP_THRESHOLD_MAX (4*1024*1024*sizeof(long),
+ * where the *default it 128*1024) to prevent calls to malloc() from
+ * translating into mmap, and M_TRIM_THRESHOLD to -1 (disable trimming, when
+ * default is  128*1024) to prevent returning memory from the top of the
+ * heap to the OS. This reduces costly mmap() calls, but has been seen to make
+ * process memory consumption to increase significantly (while all this memory
+ * remains pinned, due to IB registration).
+ *
+ * From mallopt() manual (on the tradeoffs of using mmap() calls):
+ * Allocating memory using mmap(2) has the significant advantage that the
+ * allocated memory blocks can always be independently released back to the
+ * system. (By contrast, the heap can be trimmed only if memory is freed at
+ * the top end.) On the other hand, there are some disadvantages to the use
+ * of mmap(2): deallocated space is not placed on the free list for reuse by
+ * later allocations; memory may be wasted because mmap(2) allocations must
+ * be page-aligned; and the kernel must perform the expensive task of zeroing
+ * out memory allocated via mmap(2). Balancing these factors leads to a
+ * default setting of 128*1024 for the M_MMAP_THRESHOLD parameter.
+ *
+ * The solution is to monitor adaptively change the M_TRIM_THRESHOLD
+ * and M_TOP_PAD to cause only registered buffers to be allocated from the
+ * heap. How? when a buffer is registered (which takes time anyway, and
+ * should not happen too often) the free space at the end of the heap is
+ * checked (mallinfo() call) - and the missing difference between that and
+ * the size of the registered buffer is added to the current value of M_TOP_PAD.
+ * This way, next time a buffer of that size is allocated - it is highly
+ * probable that the heap will have sufficient space to allocate it without
+ * calling mmap(). Non-communication buffers effect the size of the padding
+ * since it may take up some of it, but unless there's a memory leak - this
+ * value should stabilize early along the run. Large allocations irrelevant to
+ * communication will still cause mmap() calls, and will not be pinned.
+ * This solution is somewhat of a compromise between default and custom glibc
+ * memory parameter settings.
+ *
+ * In recent glibc versions a similar concept is employed (from the manual):
+ * Nowadays, glibc uses a dynamic mmap threshold by default. The initial value
+ * of the threshold is 128*1024, but when blocks larger than the current
+ * threshold and less than or equal to DEFAULT_MMAP_THRESHOLD_MAX are freed,
+ * the threshold is adjusted upwards to the size of the freed block.
+ * When dynamic mmap thresholding is in effect, the threshold for trimming
+ * the heap is also dynamically adjusted to be twice the dynamic mmap
+ * threshold. Dynamic adjustment of the mmap threshold is disabled if any of
+ * the M_TRIM_THRESHOLD, M_TOP_PAD, M_MMAP_THRESHOLD, or M_MMAP_MAX
+ * parameters is set.
+ */
+
+#define TEST_BUFFER_SIZE (1024 * 1024)
+
+static int get_trim_size(void) {
+    struct mallinfo mi = mallinfo();
+    return mi.keepcost;
+}
+
+UCS_MT_TEST_F(test_rcache, adaptive_trim, 1) {
+    static const size_t size = TEST_BUFFER_SIZE;
+    uintptr_t pa, new_pa;
+
+    /* cause mmap to allocate a buffer */
+    void *ptr = malloc(size);
+
+    /* get the BEFORE trim size */
+    int trim_size = get_trim_size();
+
+    /* register the memory, thus increasing the trim size */
+    region *region = get(ptr, size);
+    pa = virt_to_phys(region->super.super.start);
+
+    /* release the memory, now the trim size will increase */
+    free(ptr);
+
+    ASSERT_GT(trim_size, get_trim_size());
+    ASSERT_GT(TEST_BUFFER_SIZE, get_trim_size());
+
+    /* Next buffer should be taken from the trim  */
+    ptr = malloc(size);
+
+    /* memory should already be registered, and in the trim */
+    put(region);
+    region = get(ptr, size);
+    new_pa = virt_to_phys(region->super.super.start);
+    ASSERT_EQ(pa, new_pa);
+
+    /* cleanup */
+    put(region);
     free(ptr);
 }
