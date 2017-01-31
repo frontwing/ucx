@@ -36,8 +36,10 @@ typedef struct ucp_migrate_msg {
         migration_id_t id;
         uint64_t ep_id;
         struct {
-
-        } address_stuff;
+		migation_id_t client_id;
+		uint64_t client_uuid;
+		uint32_t num_clients;
+        } migration_data_t;
     };
 
 
