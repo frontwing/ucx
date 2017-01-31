@@ -15,7 +15,7 @@ BEGIN_C_DECLS
 
 #include <ucs/time/time.h>
 #include <ucs/async/async.h>
-
+#include <ucp/wireup/migration.h>
 
 #define TIMING_QUEUE_SIZE    2048
 #define UCT_PERF_TEST_AM_ID  5
