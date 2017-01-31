@@ -46,10 +46,8 @@ static ucs_status_t ucp_migration_send_complete(ucp_worker_h worker, uint64_t ep
     ucp_ep_h ep = ucp_worker_ep_find(worker, ep_id);
     // TODO: actually freeze sends
 
-    ucs_trace_req("send_sync_ack sender_uuid %"PRIx64" remote_request 0x%lx",
-                      sender_uuid, remote_request);
-
     /* Send acknowledgement */
+    ucs_trace_req("UCP_MIGRATION_MSG_MIGRATE_COMPLETE target_uuid %"PRIx64, ep_id);
     req = ucp_worker_allocate_reply(worker, ep_id);
 
     req->flags                   = 0;
@@ -70,9 +68,8 @@ static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t e
 {
     ucp_request_t* req;
 
-    ucs_trace_req("send_standby_ack sender_uuid %"PRIx64, ep_id);
-
     /* Send acknowledgement */
+    ucs_trace_req("UCP_MIGRATION_MSG_STANDBY_ACK target_uuid %"PRIx64, ep_id);
     req = ucp_worker_allocate_reply(worker, ep_id);
 
     req->flags                   = 0;
@@ -85,7 +82,7 @@ static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t e
     //ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
     (void) ucp_request_start_send(req);
 
-    return ucp_migration_ep_pause(ucp_worker_ep_find(ep_id));
+    return ucp_migration_ep_pause(ucp_worker_ep_find(worker, ep_id));
 }
 
 static ucs_status_t ucp_migration_handle_redirect(ucp_worker_h worker,
@@ -94,7 +91,7 @@ static ucs_status_t ucp_migration_handle_redirect(ucp_worker_h worker,
     ucp_request_t* req;
 
     /* Send acknowledgement */
-    ucs_trace_req("send_redirect_ack sender_uuid %"PRIx64, ep_id);
+    ucs_trace_req("UCP_MIGRATION_MSG_REDIRECT_ACK target_uuid %"PRIx64, ep_id);
     req = ucp_worker_allocate_reply(worker, ep_id);
 
     req->flags                   = 0;
@@ -104,10 +101,10 @@ static ucs_status_t ucp_migration_handle_redirect(ucp_worker_h worker,
     req->send.datatype           = ucp_dt_make_contig(1);
 
     //ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
-    ret_val = ucp_request_start_send(req);
+    (void) ucp_request_start_send(req);
 
     /* Redirect the connection */
-    return ucp_wireup_init_lanes(ucp_worker_ep_find(ep_id),
+    return ucp_wireup_init_lanes(ucp_worker_ep_find(worker, ep_id),
     		address_count, address_list, addr_indices);
 }
 
@@ -117,6 +114,7 @@ num_clients){
     ucp_request_t* req;
 
     /* Send migration message */
+    ucs_trace_req("UCP_MIGRATION_MSG_MIGRATE target_uuid %"PRIx64, ep_id);
     req = ucp_worker_allocate_reply(ep->worker, ep->dest_uuid);
 
     req->flags                   = 0;
