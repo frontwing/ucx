@@ -154,6 +154,7 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                 // 1. Create a migration/client ID. Random uint64_t. Just needs to be locally unique?
                 // 2. Send the migration/client ID to s1 via STANDYBY_ACK message
                 // 3. Prepare to receive a new message from s2 eventually.
+                // Alex writes this
 	        ucp_migration_handle_standby(worker, msg->ep_id);
     } else if (msg->type == UCP_MIGRATION_MSG_STANDBY_ACK) {
 	/* This means I am the server and I just got a message from client ACKing my
@@ -163,6 +164,7 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 	// 2. Foreach(client) -> Send packed message to s2. each message will have the total number of clients
 	//      (wasted space,but fine for now)
 	// 3. Prepare for the migration_complete message eventaully.
+	// Ana writes this
 
 	migration_context->clients_ack++;
 	int hash_idx = hashCode(msg->ep_id);  
@@ -176,6 +178,7 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 	// 1. Foreach(client) -> Unpack (client address_stuff)
 	// 2. Foreach(client) -> Establish a connection to the client based on (address_stuff)
 	// 3. Foreach(client) -> Create msg_redirect msg with client ID in it and send to each client
+	// Brian writes this
 	/* address_stuff = unpack message */
 	/* get address from endpoint */
 	/* create new connection(address_stuff) */
@@ -188,21 +191,29 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                 /* This means I am a client and am getting new "server" information. The new server information is
                  * extractable from the header (doesn't need to be explicit in the payload or anything). I am also sending the
                  * client ID in the payload. I will also prepare the redirect_ack */
-                // 1. extract client ID from payload
+                // 1. extract client ID from payload, verify that it is my client ID and update local information
                 // 2. create redirect ack, send back to server
-                migration_id_t cid = msg->ep_id;
-                ucp_ep_h ep;
-                ucp_migration_send_redirect_ack(worker, msg->ep_id);
-                /* should just be one ep in this case but not sure if there is a better way to do this */
-                kh_foreach_value(worker->ep_hash, ep, ucp_migration_msg_send(ep, REDIRECT_ACK));
+                // Alex writes this
+
+	} else if(msg->type == UCP_MIGRATION_MSG_REDIRECT_ACK) {
+                /* This means I am s2 and I've had a client acknowledge complete setup of the migration. I need to count
+                 * these and ensure I get one per expected client. As soon as I get all of the redirect_acks, I send a
+                 * migrate_complete to s1 */
+                // 1. Foreach(client) -> mark reception of redirect message
+                // 2. When complete, prepare  complete message for S1
+                // where do i get s1's data? we have to have it stored somewhere in migration_context maybe?
+                // Brian writes this
+                migration_context->clients_ack--;
+		if(migration_context->clients_ack == 0)
+			ucp_migration_send_complete(worker, s1's ep)
 
 
     } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE_COMPLETE) {
 
                 /* This means I am s1 and everything has been migrated to s2. I can shut down any client connections I want */
                 // 1. Free any resources used for client or S2 communications.
-	migration_context->is_complete = 1;
-            ucp_migration_send_complete(worker, msg->ep_id);
+                // Brian writes this
+		migration_context->is_complete = 1;
     } else {
         ucs_bug("invalid migration message");
     }
