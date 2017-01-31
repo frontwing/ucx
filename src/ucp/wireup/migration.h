@@ -13,6 +13,7 @@
 #include <ucp/core/ucp_worker.h>
 #include <uct/api/uct.h>
 
+typedef uint64_t migration_id_t;
 
 /**
  * Migration message types
@@ -29,16 +30,17 @@ enum {
 /**
  * Packet structure for wireup requests.
  */
-typedef struct ucp_migration_msg {
+typedef struct ucp_migrate_msg {
     uint8_t          type;                /* Message type */
     union {
-        uint64_t migration_id;
+        migration_id_t id;
+        uint64_t ep_id;
         struct {
 
         } address_stuff;
     };
 
 
-} UCS_S_PACKED ucp_migration_msg_t;
+} UCS_S_PACKED ucp_migrate_msg_t;
 
 #endif
