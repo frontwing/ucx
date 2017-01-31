@@ -4,7 +4,7 @@
 * See file LICENSE for terms.
 */
 
-#include "wireup.h"
+#include "migration.h"
 #include "address.h"
 #include "stub_ep.h"
 #include "migration.h"
@@ -142,7 +142,68 @@ static void ucp_migration_msg_dump(ucp_worker_h worker, uct_am_trace_type_t type
 
     ucs_free(address_list);
 }
+/*
+ * @param [in] rsc_tli  Resource index for every lane.
+ */
+static ucs_status_t ucp_migration_msg_send(ucp_ep_h ep, uint8_t type,
+                                        uint64_t tl_bitmap,
+                                        const ucp_rsc_index_t *rsc_tli)
+{
+    ucp_rsc_index_t rsc_index;
+    ucp_lane_index_t lane;
+    unsigned order[UCP_MAX_LANES + 1];
+    ucp_request_t* req;
+    ucs_status_t status;
+    void *address;
+
+    ucs_assert(ep->cfg_index != (uint8_t)-1);
+
+    /* We cannot allocate from memory pool because it's not thread safe
+     * and this function may be called from any thread
+     */
+    req = ucs_malloc(sizeof(*req), "migration_msg_req");
+    if (req == NULL) {
+        return UCS_ERR_NO_MEMORY;
+    }
+
+    req->flags                   = 0;
+    req->send.ep                 = ep;
+    req->send.migration.type        = type;
+    req->send.uct.func           = ucp_migration_msg_progress;
+    req->send.datatype           = ucp_dt_make_contig(1);
+
+    /* pack all addresses */
+    status = ucp_address_pack(ep->worker, ep, tl_bitmap, order,
+                              &req->send.length, &address);
+    if (status != UCS_OK) {
+        ucs_free(req);
+        ucs_error("failed to pack address: %s", ucs_status_string(status));
+        return status;
+    }
+
+    req->send.buffer = address;
+
+    /* send the indices addresses that should be connected by remote side */
+    for (lane = 0; lane < UCP_MAX_LANES; ++lane) {
+        rsc_index = rsc_tli[lane];
+        if (rsc_index != UCP_NULL_RESOURCE) {
+            req->send.migration.tli[lane] = ucp_migration_address_index(order,
+                                                                  tl_bitmap,
+                                                                  rsc_index);
+        } else {
+            req->send.migration.tli[lane] = -1;
+        }
+    }
+
+    ucp_request_start_send(req);
+    return UCS_OK;
+}
 
 UCP_DEFINE_AM(-1, UCP_AM_ID_MIGRATION, ucp_migration_msg_handler,
               ucp_migration_msg_dump, UCT_AM_CB_FLAG_ASYNC);
+
+
+
+
+
 
