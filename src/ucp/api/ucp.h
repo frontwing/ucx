@@ -2264,6 +2264,43 @@ ucs_status_t ucp_worker_flush(ucp_worker_h worker);
 
 
 /**
+ * @ingroup UCP_WORKER
+ *
+ * @brief Stop and serialize the worker (for migration)
+ *
+ * When routine asks all connected clients to standby for migration
+ * (pause all sends).
+ *
+ * @param [in] worker        UCP worker.
+ *
+ * @return Error code as defined by @ref ucs_status_t
+ */
+ucs_status_t ucp_worker_export(ucp_worker_h worker,
+                               void **serialized_worker,
+                               size_t serialized_worker_size);
+
+
+/**
+ * @ingroup UCP_WORKER
+ *
+ * @brief Creates a new worker from an image of a (live) worker.
+ *
+ * This routine notifies the original worker it is ready, along with
+ * the address of the new worker. The original worker then redirects
+ * all its peers to the new worker.
+ *
+ * Future work: support the import of dead workers.
+ *
+ * @param [in] worker        UCP worker.
+ *
+ * @return Error code as defined by @ref ucs_status_t
+ */
+ucs_status_t ucp_worker_import(void *serialized_worker,
+                               size_t serialized_worker_size,
+                               ucp_worker_h *worker_p);
+
+
+/**
  * @example ucp_hello_world.c
  * UCP hello world client / server example utility.
  */

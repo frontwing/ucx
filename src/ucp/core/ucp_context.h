@@ -172,6 +172,9 @@ enum {
                                           rndv (bcopy) */
     UCP_AM_ID_RNDV_DATA_LAST    =  13, /* The last rndv data fragment when using
                                           software rndv (bcopy) */
+
+    UCP_AM_ID_MIGRATION         =  14, /* Worker migration */
+
     UCP_AM_ID_LAST
 };
 

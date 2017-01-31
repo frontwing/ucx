@@ -36,7 +36,8 @@ noinst_HEADERS = \
 	tag/rndv.h \
 	wireup/address.h \
 	wireup/stub_ep.h \
-	wireup/wireup.h
+	wireup/wireup.h \
+	wireup/migration.h
 
 libucp_la_SOURCES = \
 	amo/basic_amo.c \
@@ -61,4 +62,5 @@ libucp_la_SOURCES = \
 	wireup/address.c \
 	wireup/select.c \
 	wireup/stub_ep.c \
-	wireup/wireup.c
+	wireup/wireup.c \
+	wireup/migration.c
