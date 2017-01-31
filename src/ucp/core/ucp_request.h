@@ -15,6 +15,7 @@
 #include <uct/api/uct.h>
 #include <ucs/datastruct/mpool.h>
 #include <ucs/datastruct/queue_types.h>
+#include <ucp/wireup/migration.h>
 #include <ucp/wireup/wireup.h>
 
 
@@ -89,6 +90,8 @@ struct ucp_request {
                 ucp_tag_t         tag;      /* Tagged send */
 
                 ucp_wireup_msg_t  wireup;
+
+                ucp_migrate_msg_t migration;
 
                 struct {
                     uint64_t      remote_addr; /* Remote address */

@@ -15,26 +15,78 @@
 #include <ucs/arch/bitops.h>
 #include <ucs/async/async.h>
 
-static void ucp_migration_handle_standby()
+ucs_status_t ucp_migration_standby_msg_progress(uct_pending_req_t *self)
 {
+    ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
+    ucp_ep_h ep = req->send.ep;
+    ssize_t packed_len;
+
+    if (req->send.wireup.type == UCP_WIREUP_MSG_REQUEST) {
+        if (ep->flags & UCP_EP_FLAG_REMOTE_CONNECTED) {
+            ucs_trace("ep %p: not sending wireup message - remote already connected",
+                      ep);
+            goto out;
+        }
+    }
+
+    /* send the active message */
+    if (req->send.wireup.type == UCP_WIREUP_MSG_ACK) {
+        req->send.lane = ucp_ep_get_am_lane(ep);
+    } else {
+        req->send.lane = ucp_ep_get_wireup_msg_lane(ep);
+    }
+    packed_len = uct_ep_am_bcopy(ep->uct_eps[req->send.lane], UCP_AM_ID_WIREUP,
+                                 ucp_wireup_msg_pack, req);
+    if (packed_len < 0) {
+        if (packed_len != UCS_ERR_NO_RESOURCE) {
+            ucs_error("failed to send wireup: %s", ucs_status_string(packed_len));
+        }
+        return (ucs_status_t)packed_len;
+    }
+
+out:
+    ucs_free((void*)req->send.buffer);
+    ucs_free(req);
+    return UCS_OK;
+}
+
+static void ucp_migration_handle_standby(ucp_worker_h worker, uint64_t ep_id)
+{
+
+    ucp_request_t* req;
+
+
     /* Freeze this address */
+    ucp_ep_h ep = ucp_worker_ep_find(worker, ep_id);
 
     /* Create the migration ID for this connection */
+    migration_id_t id = worker->async migration_counter++;
 
     /* Send acknowledgement */
-    ucs_trace("ep %p: sending migration standby acknowledgement", ep);
-    status = ucp_wireup_msg_send(ep, UCP_WIREUP_MSG_REPLY, tl_bitmap, rsc_tli);
-    if (status != UCS_OK) {
-        return;
+
+
+    /* We cannot allocate from memory pool because it's not thread safe
+     * and this function may be called from any thread
+     */
+    req = ucs_mpool_get(&ep->worker->req_mp);
+    if (req == NULL) {
+        return UCS_ERR_NO_MEMORY;
     }
-    ep->flags |= UCP_EP_FLAG_CONNECT_REP_SENT;
+
+    req->flags                   = 0;
+    req->send.ep                 = ep;
+    req->send.migration.type     = UCP_MIGRATION_MSG_STANDBY_ACK;
+    req->send.uct.func           = ucp_migration_standby_msg_progress;
+    req->send.datatype           = ucp_dt_make_contig(1);
+
+    ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
 }
 
 static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                                            size_t length, void *desc)
 {
     ucp_worker_h worker   = arg;
-    ucp_migration_msg_t *msg = data;
+    ucp_migrate_msg_t *msg = data;
     char peer_name[UCP_WORKER_NAME_MAX];
     ucp_address_entry_t *address_list;
     unsigned address_count;
@@ -51,13 +103,15 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
     }
 
     if (msg->type == UCP_MIGRATION_MSG_STANDBY) {
-
+        ucp_migration_handle_standby(worker, msg->ep_id);
     } else if (msg->type == UCP_MIGRATION_MSG_STANDBY_ACK) {
 
-    } else if (msg->type == UCP_MIGRATION_MSG_DESTINATION) {
+    } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE) {
 
     } else if (msg->type == UCP_MIGRATION_MSG_REDIRECT) {
 
+    } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE_COMPLETE) {
+        migration_context->is_complete = 1;
     } else {
         ucs_bug("invalid migration message");
     }
