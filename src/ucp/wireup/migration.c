@@ -56,6 +56,47 @@ static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t e
     return ucp_request_start_send(req);
 }
 
+static ucs_status_t ucp_migration_send_migrate(ucp_ep_h ep, uint64_t client_id, uint64_t client_uuid, int 
+
+num_clients){
+    ucp_request_t* req;
+
+    /* Send migration message */
+    req = ucp_worker_allocate_reply(ep->worker, ep->dest_uuid);
+
+    req->flags                   = 0;
+    req->send.ep                 = ep;
+    req->send.proto.am_id        = UCP_AM_ID_MIGRATION;
+    req->send.migration.type     = UCP_MIGRATION_MSG_MIGRATE;
+    req->send.migration.id       = client_id;
+    req->send.migration.migr_addr.client_uuid = client_uuid;
+    req->send.migration.migr_addr.num_clients = num_clients;
+    req->send.uct.func           = ucp_proto_progress_migration_msg;
+    req->send.datatype           = ucp_dt_make_contig(1);
+
+    ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
+    return ucp_request_start_send(req);
+}
+
+
+static ucs_status_t ucp_migration_send_standby(ucp_ep_h ep){
+    ucp_request_t* req;
+
+    /* Send standby message */
+    req = ucp_worker_allocate_reply(ep->worker, ep->dest_uuid);
+
+    req->flags                   = 0;
+    req->send.ep                 = ep;
+    req->send.proto.am_id        = UCP_AM_ID_MIGRATION;
+    req->send.migration.type     = UCP_MIGRATION_MSG_STANDBY;
+    req->send.uct.func           = ucp_proto_progress_migration_msg;
+    req->send.datatype           = ucp_dt_make_contig(1);
+
+    ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
+    return ucp_request_start_send(req);
+}
+
+
 static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                                            size_t length, void *desc)
 {
@@ -79,7 +120,9 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
     if (msg->type == UCP_MIGRATION_MSG_STANDBY) {
         ucp_migration_handle_standby(worker, msg->ep_id);
     } else if (msg->type == UCP_MIGRATION_MSG_STANDBY_ACK) {
-
+	migration_context->clients_ack++;
+	int hash_idx = hashCode(msg->ep_id);  
+	migration_context->client_id[hash_idx]->key=msg->id;
     } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE) {
 
     } else if (msg->type == UCP_MIGRATION_MSG_REDIRECT) {
@@ -147,25 +190,26 @@ static int send_standby_to_ep()
 
 ucs_status_t ucp_worker_migrate(ucp_worker_h worker, ucp_ep_h target)
 {
-    struct migration_context this_migration = {0};
-
     /* Send all the clients STANDBY */
-    ucp_ep_h iterator;
-    kh_foreach_value(worker->ep_hash, iterator, send_standby_to_ep);
+    ucp_ep_h ep;
+    kh_foreach_value(&worker->ep_hash, ep, ucs_status_t ucp_migration_send_standby(ep));
 
-    /* Waits for ACKs */
-    struct migration_context *ctx;
-    while (!all_acked(ctx->clients_acked)) {
-        progress();
+    /* Waits for client ACKs */
+    int num_ep = kh_size(&worker->ep_hash);
+    while (migration_context->clients_acked!=num_ep){
+	ucp_worker_progress(worker);
     }
 
     /* Sends <target> the peer addresses */
-    kh_foreach_value(worker->ep_hash, iterator, get_ep_address_stuff);
-    status = ucp_migration_msg_send(ep, UCP_MIGRATION_MSG_MIGRATE, address_stuff);
+    int hash_idx = hashCode(ep->dest_uuid);  
+    	
+    kh_foreach_value(&worker->ep_hash, ep, ucp_migration_send_migrate(target, migration_context->client_id
 
-    /* */
-    while (!target_acked) {
-        progress();
+[hash_idx]->key, ep->dest_uuid, int num_ep));
+
+    /* Wait until the <taget> fnished the migration */
+    while (!migration_context->is_complete) {
+	ucp_worker_progress(worker);
     }
 
     return UCS_OK;

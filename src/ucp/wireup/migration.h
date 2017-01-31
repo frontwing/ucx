@@ -35,11 +35,11 @@ typedef struct ucp_migrate_msg {
     union {
         migration_id_t id;
         uint64_t ep_id;
-        struct {
-		migation_id_t client_id;
-		uint64_t client_uuid;
-		uint32_t num_clients;
-        } migration_data_t;
+	struct migration_data_t {
+                migation_id_t client_id;
+                uint64_t client_uuid;
+                uint32_t num_clients;
+        } migr_addr;
     };
 
 
