@@ -15,71 +15,45 @@
 #include <ucs/arch/bitops.h>
 #include <ucs/async/async.h>
 
-ucs_status_t ucp_migration_standby_msg_progress(uct_pending_req_t *self)
+ucs_status_t ucp_proto_progress_migration_msg(uct_pending_req_t *self)
 {
     ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
-    ucp_ep_h ep = req->send.ep;
-    ssize_t packed_len;
 
-    if (req->send.wireup.type == UCP_WIREUP_MSG_REQUEST) {
-        if (ep->flags & UCP_EP_FLAG_REMOTE_CONNECTED) {
-            ucs_trace("ep %p: not sending wireup message - remote already connected",
-                      ep);
-            goto out;
-        }
-    }
+    ucs_status_t status = ucp_do_am_bcopy_single(self, req->send.proto.am_id,
+                                                 ucp_proto_pack);
 
-    /* send the active message */
-    if (req->send.wireup.type == UCP_WIREUP_MSG_ACK) {
-        req->send.lane = ucp_ep_get_am_lane(ep);
-    } else {
-        req->send.lane = ucp_ep_get_wireup_msg_lane(ep);
-    }
-    packed_len = uct_ep_am_bcopy(ep->uct_eps[req->send.lane], UCP_AM_ID_WIREUP,
-                                 ucp_wireup_msg_pack, req);
-    if (packed_len < 0) {
-        if (packed_len != UCS_ERR_NO_RESOURCE) {
-            ucs_error("failed to send wireup: %s", ucs_status_string(packed_len));
-        }
-        return (ucs_status_t)packed_len;
-    }
+    // TODO: Copy more stuff (like addresses) - here!
 
-out:
-    ucs_free((void*)req->send.buffer);
-    ucs_free(req);
-    return UCS_OK;
+    if (status == UCS_OK) {
+        ucs_mpool_put(req);
+    }
+    return status;
 }
 
-static void ucp_migration_handle_standby(ucp_worker_h worker, uint64_t ep_id)
+static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t ep_id)
 {
-
     ucp_request_t* req;
-
 
     /* Freeze this address */
     ucp_ep_h ep = ucp_worker_ep_find(worker, ep_id);
+    // TODO: actually freeze sends
 
-    /* Create the migration ID for this connection */
-    migration_id_t id = worker->async migration_counter++;
+    ucs_trace_req("send_sync_ack sender_uuid %"PRIx64" remote_request 0x%lx",
+                      sender_uuid, remote_request);
 
     /* Send acknowledgement */
-
-
-    /* We cannot allocate from memory pool because it's not thread safe
-     * and this function may be called from any thread
-     */
-    req = ucs_mpool_get(&ep->worker->req_mp);
-    if (req == NULL) {
-        return UCS_ERR_NO_MEMORY;
-    }
+    req = ucp_worker_allocate_reply(worker, ep_id);
 
     req->flags                   = 0;
     req->send.ep                 = ep;
+    req->send.proto.am_id        = UCP_AM_ID_MIGRATION;
     req->send.migration.type     = UCP_MIGRATION_MSG_STANDBY_ACK;
-    req->send.uct.func           = ucp_migration_standby_msg_progress;
+    req->send.migration.id       = worker->migrations.migration_counter++;
+    req->send.uct.func           = ucp_proto_progress_migration_msg;
     req->send.datatype           = ucp_dt_make_contig(1);
 
     ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
+    return ucp_request_start_send(req);
 }
 
 static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,

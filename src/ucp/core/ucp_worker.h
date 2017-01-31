@@ -78,6 +78,14 @@ typedef struct ucp_worker_wakeup {
 
 
 /**
+ * UCP worker wake-up context.
+ */
+typedef struct ucp_worker_migration {
+    uint64_t                      migration_counter; /* Counter for migration ID generation */
+} ucp_worker_migration_t;
+
+
+/**
  * UCP worker (thread context).
  */
 typedef struct ucp_worker {
@@ -87,6 +95,7 @@ typedef struct ucp_worker {
     uct_worker_h                  uct;           /* UCT worker handle */
     ucs_mpool_t                   req_mp;        /* Memory pool for requests */
     ucp_worker_wakeup_t           wakeup;        /* Wakeup-related context */
+    ucp_worker_migration_t        migrations;    /* Migration-related context */
     uint64_t                      atomic_tls;    /* Which resources can be used for atomics */
 
     int                           inprogress;
