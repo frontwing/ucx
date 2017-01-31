@@ -15,19 +15,27 @@
 #include <ucs/arch/bitops.h>
 #include <ucs/async/async.h>
 
+static ucs_status_t ucp_migration_ep_pause(ucp_ep_h ep)
+{
+    ucp_lane_index_t lane;
+
+    UCP_THREAD_CS_ENTER_CONDITIONAL(&ep->worker->mt_lock);
+
+    for (lane = 0; lane < ucp_ep_num_lanes(ep); ++lane) {
+        uct_ep_destroy(ep->uct_eps[lane]);
+    }
+
+    ep->am_lane = UCP_NULL_LANE;
+
+    UCP_THREAD_CS_EXIT_CONDITIONAL(&ep->worker->mt_lock);
+    return UCS_OK;
+}
+
 ucs_status_t ucp_proto_progress_migration_msg(uct_pending_req_t *self)
 {
     ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
-
-    ucs_status_t status = ucp_do_am_bcopy_single(self, req->send.proto.am_id,
-                                                 ucp_proto_pack);
-
-    // TODO: Copy more stuff (like addresses) - here!
-
-    if (status == UCS_OK) {
-        ucs_mpool_put(req);
-    }
-    return status;
+    ucs_mpool_put(req);
+    return UCS_OK;
 }
 
 static ucs_status_t ucp_migration_send_complete(ucp_worker_h worker, uint64_t ep_id)
@@ -62,26 +70,45 @@ static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t e
 {
     ucp_request_t* req;
 
-    /* Freeze this address */
-    ucp_ep_h ep = ucp_worker_ep_find(worker, ep_id);
-    // TODO: actually freeze sends
-
-    ucs_trace_req("send_sync_ack sender_uuid %"PRIx64" remote_request 0x%lx",
-                      sender_uuid, remote_request);
+    ucs_trace_req("send_standby_ack sender_uuid %"PRIx64, ep_id);
 
     /* Send acknowledgement */
     req = ucp_worker_allocate_reply(worker, ep_id);
 
     req->flags                   = 0;
-    req->send.ep                 = ep;
     req->send.proto.am_id        = UCP_AM_ID_MIGRATION;
     req->send.migration.type     = UCP_MIGRATION_MSG_STANDBY_ACK;
     req->send.migration.id       = worker->migrations.migration_counter++;
     req->send.uct.func           = ucp_proto_progress_migration_msg;
     req->send.datatype           = ucp_dt_make_contig(1);
 
-    ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
-    return ucp_request_start_send(req);
+    //ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
+    (void) ucp_request_start_send(req);
+
+    return ucp_migration_ep_pause(ucp_worker_ep_find(ep_id));
+}
+
+static ucs_status_t ucp_migration_handle_redirect(ucp_worker_h worker,
+		uint64_t ep_id, ucp_address_t *address)
+{
+    ucp_request_t* req;
+
+    /* Send acknowledgement */
+    ucs_trace_req("send_redirect_ack sender_uuid %"PRIx64, ep_id);
+    req = ucp_worker_allocate_reply(worker, ep_id);
+
+    req->flags                   = 0;
+    req->send.proto.am_id        = UCP_AM_ID_MIGRATION;
+    req->send.migration.type     = UCP_MIGRATION_MSG_REDIRECT_ACK;
+    req->send.uct.func           = ucp_proto_progress_migration_msg;
+    req->send.datatype           = ucp_dt_make_contig(1);
+
+    //ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
+    ret_val = ucp_request_start_send(req);
+
+    /* Redirect the connection */
+    return ucp_wireup_init_lanes(ucp_worker_ep_find(ep_id),
+    		address_count, address_list, addr_indices);
 }
 
 static ucs_status_t ucp_migration_send_migrate(ucp_ep_h ep, uint64_t client_id, uint64_t client_uuid, int 
@@ -130,20 +157,6 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 {
     ucp_worker_h worker   = arg;
     ucp_migrate_msg_t *msg = data;
-    char peer_name[UCP_WORKER_NAME_MAX];
-    ucp_address_entry_t *address_list;
-    unsigned address_count;
-    ucs_status_t status;
-    uint64_t uuid;
-
-    UCS_ASYNC_BLOCK(&worker->async);
-
-    status = ucp_address_unpack(msg + 1, &uuid, peer_name, UCP_WORKER_NAME_MAX,
-                                &address_count, &address_list);
-    if (status != UCS_OK) {
-        ucs_error("failed to unpack address: %s", ucs_status_string(status));
-        goto out;
-    }
 
     if (msg->type == UCP_MIGRATION_MSG_STANDBY) {
               /* This means I am the client and I just got a message from s1 that s1
@@ -188,12 +201,10 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 
 
     } else if (msg->type == UCP_MIGRATION_MSG_REDIRECT) {
-                /* This means I am a client and am getting new "server" information. The new server information is
-                 * extractable from the header (doesn't need to be explicit in the payload or anything). I am also sending the
-                 * client ID in the payload. I will also prepare the redirect_ack */
-                // 1. extract client ID from payload, verify that it is my client ID and update local information
-                // 2. create redirect ack, send back to server
-                // Alex writes this
+		/* This means I am a client and am getting new "server" information. The new server information is
+		 * extractable from the header (doesn't need to be explicit in the payload or anything). I am also sending the
+		 * client ID in the payload. I will also prepare the redirect_ack */
+    	ucp_migration_handle_redirect(worker, msg->ep_id, (ucp_address_t*)(msg + 1));
 
 	} else if(msg->type == UCP_MIGRATION_MSG_REDIRECT_ACK) {
                 /* This means I am s2 and I've had a client acknowledge complete setup of the migration. I need to count
@@ -207,7 +218,6 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 		if(migration_context->clients_ack == 0)
 			ucp_migration_send_complete(worker, s1's ep)
 
-
     } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE_COMPLETE) {
 
                 /* This means I am s1 and everything has been migrated to s2. I can shut down any client connections I want */
@@ -218,10 +228,7 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
         ucs_bug("invalid migration message");
     }
 
-    ucs_free(address_list);
-
 out:
-    UCS_ASYNC_UNBLOCK(&worker->async);
     return UCS_OK;
 }
 
@@ -338,79 +345,10 @@ static void ucp_migration_msg_dump(ucp_worker_h worker, uct_am_trace_type_t type
         }
         snprintf(p, end - p, "/md[%d]", ae->md_index);
         p += strlen(p);
-
-//        for (lane = 0; lane < UCP_MAX_LANES; ++lane) {
-//            if (msg->tli[lane] == (ae - address_list)) {
-//                snprintf(p, end - p, "/lane[%d]", lane);
-//                p += strlen(p);
-//            }
-//        }
     }
 
     ucs_free(address_list);
 }
-/*
- * @param [in] rsc_tli  Resource index for every lane.
- */
-static ucs_status_t ucp_migration_msg_send(ucp_ep_h ep, uint8_t type,
-                                        uint64_t tl_bitmap,
-                                        const ucp_rsc_index_t *rsc_tli)
-{
-    ucp_rsc_index_t rsc_index;
-    ucp_lane_index_t lane;
-    unsigned order[UCP_MAX_LANES + 1];
-    ucp_request_t* req;
-    ucs_status_t status;
-    void *address;
-
-    ucs_assert(ep->cfg_index != (uint8_t)-1);
-
-    /* We cannot allocate from memory pool because it's not thread safe
-     * and this function may be called from any thread
-     */
-    req = ucs_malloc(sizeof(*req), "migration_msg_req");
-    if (req == NULL) {
-        return UCS_ERR_NO_MEMORY;
-    }
-
-    req->flags                   = 0;
-    req->send.ep                 = ep;
-    req->send.migration.type        = type;
-    req->send.uct.func           = ucp_migration_msg_progress;
-    req->send.datatype           = ucp_dt_make_contig(1);
-
-    /* pack all addresses */
-    status = ucp_address_pack(ep->worker, ep, tl_bitmap, order,
-                              &req->send.length, &address);
-    if (status != UCS_OK) {
-        ucs_free(req);
-        ucs_error("failed to pack address: %s", ucs_status_string(status));
-        return status;
-    }
-
-    req->send.buffer = address;
-
-    /* send the indices addresses that should be connected by remote side */
-    for (lane = 0; lane < UCP_MAX_LANES; ++lane) {
-        rsc_index = rsc_tli[lane];
-        if (rsc_index != UCP_NULL_RESOURCE) {
-            req->send.migration.tli[lane] = ucp_migration_address_index(order,
-                                                                  tl_bitmap,
-                                                                  rsc_index);
-        } else {
-            req->send.migration.tli[lane] = -1;
-        }
-    }
-
-    ucp_request_start_send(req);
-    return UCS_OK;
-}
 
 UCP_DEFINE_AM(-1, UCP_AM_ID_MIGRATION, ucp_migration_msg_handler,
               ucp_migration_msg_dump, UCT_AM_CB_FLAG_ASYNC);
-
-
-
-
-
-
