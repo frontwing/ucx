@@ -174,7 +174,6 @@ enum {
                                           software rndv (bcopy) */
 
     UCP_AM_ID_MIGRATION         =  14, /* Worker migration */
-
     UCP_AM_ID_LAST
 };
 

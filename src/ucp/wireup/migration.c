@@ -15,6 +15,21 @@
 #include <ucs/arch/bitops.h>
 #include <ucs/async/async.h>
 
+static void ucp_migration_handle_standby()
+{
+    /* Freeze this address */
+
+    /* Create the migration ID for this connection */
+
+    /* Send acknowledgement */
+    ucs_trace("ep %p: sending migration standby acknowledgement", ep);
+    status = ucp_wireup_msg_send(ep, UCP_WIREUP_MSG_REPLY, tl_bitmap, rsc_tli);
+    if (status != UCS_OK) {
+        return;
+    }
+    ep->flags |= UCP_EP_FLAG_CONNECT_REP_SENT;
+}
+
 static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                                            size_t length, void *desc)
 {
@@ -91,6 +106,41 @@ ucs_status_t ucp_migration_send_request(ucp_ep_h ep)
 //    status = ucp_migration_msg_send(ep, UCP_MIGRATION_MSG_REQUEST, tl_bitmap, rsc_tli);
     ep->flags |= UCP_EP_FLAG_CONNECT_REQ_SENT;
     return status;
+}
+
+struct migration_context {
+    char clients_acked[MAX_CLIENTS];
+};
+
+static int send_standby_to_ep()
+{
+    status = ucp_migration_msg_send(ep, UCP_MIGRATION_MSG_STANDBY);
+}
+
+ucs_status_t ucp_worker_migrate(ucp_worker_h worker, ucp_ep_h target)
+{
+    struct migration_context this_migration = {0};
+
+    /* Send all the clients STANDBY */
+    ucp_ep_h iterator;
+    kh_foreach_value(worker->ep_hash, iterator, send_standby_to_ep);
+
+    /* Waits for ACKs */
+    struct migration_context *ctx;
+    while (!all_acked(ctx->clients_acked)) {
+        progress();
+    }
+
+    /* Sends <target> the peer addresses */
+    kh_foreach_value(worker->ep_hash, iterator, get_ep_address_stuff);
+    status = ucp_migration_msg_send(ep, UCP_MIGRATION_MSG_MIGRATE, address_stuff);
+
+    /* */
+    while (!target_acked) {
+        progress();
+    }
+
+    return UCS_OK;
 }
 
 static void ucp_migration_msg_dump(ucp_worker_h worker, uct_am_trace_type_t type,
