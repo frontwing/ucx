@@ -58,6 +58,7 @@ static ucs_status_t ucp_migration_send_complete(ucp_worker_h worker, uint64_t ep
 }
 
 
+
 static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t ep_id)
 {
     ucp_request_t* req;
@@ -106,6 +107,31 @@ num_clients){
     return ucp_request_start_send(req);
 }
 
+static ucs_status_t ucp_migration_send_redirect(ucp_worker_h worker, uint64_t ep_id, uint64_t client_id)
+{
+    ucp_request_t* req;
+
+    /* Freeze this address */
+    ucp_ep_h ep = ucp_worker_ep_find(worker, ep_id);
+    // TODO: actually freeze sends
+
+    ucs_trace_req("send_sync_ack sender_uuid %"PRIx64" remote_request 0x%lx",
+                      sender_uuid, remote_request);
+
+    /* Send acknowledgement */
+    req = ucp_worker_allocate_reply(worker, ep_id);
+
+    req->flags                   = 0;
+    req->send.ep                 = ep;
+    req->send.proto.am_id        = UCP_AM_ID_MIGRATION;
+    req->send.migration.type     = UCP_MIGRATION_MSG_REDIRECT;
+    req->send.migration.id       = client_id;
+    req->send.uct.func           = ucp_proto_progress_migration_msg;
+    req->send.datatype           = ucp_dt_make_contig(1);
+
+    ep->flags |= UCP_EP_FLAG_DURING_MIGRATION;
+    return ucp_request_start_send(req);
+}
 
 static ucs_status_t ucp_migration_send_standby(ucp_ep_h ep){
     ucp_request_t* req;
@@ -179,10 +205,11 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 	// 2. Foreach(client) -> Establish a connection to the client based on (address_stuff)
 	// 3. Foreach(client) -> Create msg_redirect msg with client ID in it and send to each client
 	// Brian writes this
-	/* address_stuff = unpack message */
-	/* get address from endpoint */
-	/* create new connection(address_stuff) */
-	new_ep = ucp_create_ep(address_stuff)
+	uint64_t dest = data->migration.migr_addr.client_uuid
+	migration_id_t id = data->migration.id;
+	/* create new connection here based on the dest */
+
+	#warning create new connection
 	/* create msg_redirect, send to client, add client ID in the payload */
 	ucp_migration_send_redirect(worker, new_ep, clientID);
 
@@ -203,9 +230,11 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                 // 2. When complete, prepare  complete message for S1
                 // where do i get s1's data? we have to have it stored somewhere in migration_context maybe?
                 // Brian writes this
+                #warning Can we decrement this, or should we have a "num_clients" that's set once all clients ack?
                 migration_context->clients_ack--;
+		/* Do we have all of the acks? If so, send complete */
 		if(migration_context->clients_ack == 0)
-			ucp_migration_send_complete(worker, s1's ep)
+			ucp_migration_send_complete(worker, migration_context->s1_ep);
 
 
     } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE_COMPLETE) {
