@@ -48,6 +48,7 @@
 #include <errno.h>   //errno
 #include <time.h>
 
+#include <mpi.h>
 struct msg {
     uint64_t        data_len;
     uint8_t         data[0];
@@ -69,9 +70,13 @@ static const ucp_tag_t tag  = 0x1337a880u;
 static const ucp_tag_t tag_mask = -1;
 static ucp_address_t *local_addr;
 static ucp_address_t *peer_addr;
+static ucp_address_t *server1_addr;
+static ucp_address_t *server2_addr;
 
 static size_t local_addr_len;
 static size_t peer_addr_len;
+static size_t server1_addr_len;
+static size_t server2_addr_len;
 
 static int parse_cmd(int argc, char * const argv[], char **server_name);
 static int run_server();
@@ -368,23 +373,23 @@ static int run_ucx_server(ucp_worker_h ucp_worker, ucp_address_t *other_server)
 
     ret = 0;
     free(msg);
+	if (other_server) {
+		ucp_ep_h other_ep;
+		ep_params.address = other_server;
+		
+		status = ucp_ep_create(ucp_worker, &ep_params, &other_ep);
+		if (status != UCS_OK) {
+			goto err;
+	    }
+		
+		/* cross fingers here! */
+		printf("MIGRATION STARTED!");
+		ucp_worker_migrate(ucp_worker, other_ep);
+		printf("OMG MIGRATION COMPLETE OMG!");
+		
+		ucp_ep_destroy(other_ep);
+	}
 
-    if (other_server) {
-        ucp_ep_h other_ep;
-        ep_params.address = other_server;
-
-        status = ucp_ep_create(ucp_worker, &ep_params, &other_ep);
-        if (status != UCS_OK) {
-            goto err;
-        }
-
-        /* cross fingers here! */
-        printf("MIGRATION STARTED!");
-        ucp_worker_migrate(ucp_worker, other_ep);
-        printf("OMG MIGRATION COMPLETE OMG!");
-
-        ucp_ep_destroy(other_ep);
-    }
 
 err_ep:
     ucp_ep_destroy(client_ep);
@@ -436,7 +441,11 @@ int main(int argc, char **argv)
     char *server = NULL;
     int oob_sock = -1;
     int ret = -1;
+	int size, rank;
 
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     /* Parse the command line */
     if (parse_cmd(argc, argv, &server) != UCS_OK) {
         goto err;
@@ -480,52 +489,38 @@ int main(int argc, char **argv)
     printf("[0x%x] local address length: %zu\n",
            (unsigned int)pthread_self(), local_addr_len);
 
-    /* OOB connection establishment */
-    if (server) {
-        peer_addr_len = local_addr_len;
+	MPI_Request req;
+#define S1S2 2
+#define S1C 1
+#define CLIENT 0
+#define S1 1
+#define S2 2
+	/* Exchange all addresses */
+	/* 0 is client, 1 is first server, 2 is second server */
+	if(rank == CLIENT) /* client */
+	{
+		MPI_Recv(&server1_addr_len, 1, MPI_INT, S1, S1C, MPI_COMM_WORLD, &req);
+		server1_addr = malloc(sizeof(char)*server1_addr_len);
+		MPI_Recv(server1_addr, local_addr_len, MPI_CHAR, S1, S1C, MPI_COMM_WORLD, &req);
+		/* send my address to first server. get address for second server for migration */
+	}
+	else if(rank == S1) /* first server */
+	{
+		/* Send address length first */
+		MPI_Recv(&server2_addr_len, 1, MPI_INT, S2, S2S1, MPI_COMM_WORLD, &req);
+		server2_addr = malloc(sizeof(char)*server2_addr_len);
+		/* send my address to client, get clients address. */
+		MPI_Recv(server2_addr, server2_addr_len, MPI_CHAR, S2, S2S1, MPI_COMM_WORLD, &req);
+		MPI_Send(local_addr_len, 1, MPI_INT, CLIENT, S1C, MPI_COMM_WORLD);
+		MPI_Send(local_addr, local_addr_len, MPI_CHAR, CLIENT, S1C, MPI_COMM_WORLD);
+	}
 
-        oob_sock = run_client(server);
-        if (oob_sock < 0) {
-            goto err_addr;
-        }
+	else if(rank == S2) /* second server */
+	{
+		MPI_Send(local_addr_len, 1, MPI_INT, S1, S2S1, MPI_COMM_WORLD);
+		MPI_Send(local_addr, local_addr_len, MPI_CHAR, S1, S2S1, MPI_COMM_WORLD);
+	}
 
-        ret = recv(oob_sock, &addr_len, sizeof(addr_len), 0);
-        if (ret < 0) {
-            fprintf(stderr, "failed to receive address length\n");
-            goto err_addr;
-        }
-
-        peer_addr_len = addr_len;
-        peer_addr = malloc(peer_addr_len);
-        if (!peer_addr) {
-            fprintf(stderr, "unable to allocate memory\n");
-            goto err_addr;
-        }
-
-        ret = recv(oob_sock, peer_addr, peer_addr_len, 0);
-        if (ret < 0) {
-            fprintf(stderr, "failed to receive address\n");
-            goto err_peer_addr;
-        }
-    } else {
-        oob_sock = run_server();
-        if (oob_sock < 0) {
-            goto err_peer_addr;
-        }
-
-        addr_len = local_addr_len;
-        ret = send(oob_sock, &addr_len, sizeof(addr_len), 0);
-        if (ret < 0 || ret != sizeof(addr_len)) {
-            fprintf(stderr, "failed to send address length\n");
-            goto err_peer_addr;
-        }
-
-        ret = send(oob_sock, local_addr, local_addr_len, 0);
-        if (ret < 0 || ret != local_addr_len) {
-            fprintf(stderr, "failed to send address\n");
-            goto err_peer_addr;
-        }
-    }
 
     ret = run_test(server, ucp_worker);
 
