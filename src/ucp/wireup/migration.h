@@ -29,14 +29,10 @@ enum {
  * Packet structure for wireup requests.
  */
 typedef struct ucp_migrate_msg {
-    uint8_t          type;                /* Message type */
-    union {
-        migration_id_t source_uuid;
-        struct {
-        	uint64_t ep_id;
-        	uint64_t total_clients;
-        };
-    };
+    uint8_t  type;                /* Message type */
+    uint64_t ep_id;
+    uint64_t origin;
+    uint64_t total_clients;
 } UCS_S_PACKED ucp_migrate_msg_t;
 
 #endif

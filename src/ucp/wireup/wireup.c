@@ -332,14 +332,11 @@ static ucs_status_t ucp_wireup_msg_handler(void *arg, void *data,
         goto out;
     }
 
+    fprintf(stderr, "#%lu got new WIREUP MESSAGE: %hu\n", worker->uuid, msg->type);
+
     if (msg->type == UCP_WIREUP_MSG_ACK) {
         ucs_assert(address_count == 0);
         ucp_wireup_process_ack(worker, uuid);
-        if (worker->migration.destination.source_uuid) {
-            if(--worker->migration.clients_ack == 0) {
-                ucp_migration_send_complete(worker); /* cached earlier */
-            }
-        }
     } else if (msg->type == UCP_WIREUP_MSG_REQUEST) {
         if (msg->reconnect) {
             uuid = msg->reconnect;
@@ -348,6 +345,12 @@ static ucs_status_t ucp_wireup_msg_handler(void *arg, void *data,
                                    address_list);
     } else if (msg->type == UCP_WIREUP_MSG_REPLY) {
         ucp_wireup_process_reply(worker, msg, uuid, address_count, address_list);
+        if (worker->migration.destination.source_uuid != 0) {
+            fprintf(stderr, "#%lu got new WIREUP MESSAGE FROM CLIENT: %hu, %hu\n", worker->uuid, worker->migration.clients_ack, worker->migration.clients_total);
+            if(worker->migration.clients_ack == 0) {
+                ucp_migration_send_complete(worker); /* cached earlier */
+            }
+        }
     } else {
         ucs_bug("invalid wireup message");
     }

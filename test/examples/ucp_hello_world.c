@@ -265,9 +265,7 @@ static int run_ucx_client(ucp_worker_h ucp_worker)
     }
 
 
-    fprintf(stderr,"\n\n----- SERVER MIGRATION TIME! ----\n\n");
-    fprintf(stderr,"%s", msg->data);
-    fprintf(stderr,"\n\n---------------------------------\n\n");
+    fprintf(stderr,"\n\n----- CLIENT AWAITS MIGRATION! ----\n\n");
 
     msg_len = sizeof(*msg) + local_addr_len;
     msg = calloc(1, msg_len);
@@ -459,7 +457,8 @@ static int run_ucx_server(ucp_worker_h ucp_worker, int rank)
 
     ret = 0;
     free(msg);
-	if (rank == S2) {
+
+	if (rank == S1) {
 		ucp_ep_h other_ep;
 		ep_params.address = server2_addr;
 		
@@ -469,9 +468,9 @@ static int run_ucx_server(ucp_worker_h ucp_worker, int rank)
 	    }
 		
 		/* cross fingers here! */
-		printf("MIGRATION STARTED!");
+		fprintf(stderr, "MIGRATION STARTED!\n");
 		ucp_worker_migrate(ucp_worker, other_ep);
-		printf("OMG MIGRATION COMPLETE OMG!");
+		fprintf(stderr, "OMG MIGRATION COMPLETE OMG!\n");
 		
 		ucp_ep_destroy(other_ep);
 	}
@@ -486,7 +485,7 @@ err:
 
 static int run_test(int rank, ucp_worker_h ucp_worker)
 {
-		fprintf(stderr,"in run_test, rank: %d\n", rank);
+	fprintf(stderr,"in run_test, rank: %d\n", rank);
     if (rank == CLIENT) {
 		fprintf(stderr," in run test, going down client path, rank %d\n", rank);
         return run_ucx_client(ucp_worker);

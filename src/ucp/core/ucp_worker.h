@@ -89,6 +89,7 @@ typedef struct ucp_worker_migration {
     union {
     	struct {
     		uint64_t              dest_uuid;
+    		uint64_t              count;
 			ucp_ep_h              new_eps[MAX_CLIENTS];
 			int                   new_ep_cnt;
     	} source;

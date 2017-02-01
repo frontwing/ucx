@@ -31,10 +31,36 @@ static ucs_status_t ucp_migration_ep_pause(ucp_ep_h ep)
     return UCS_OK;
 }
 
+static size_t ucp_migration_msg_pack(void *dest, void *arg)
+{
+    ucp_request_t *req = arg;
+    *(ucp_migrate_msg_t*)dest = req->send.migration;
+    if (req->send.length) {
+        memcpy((ucp_migrate_msg_t*)dest + 1, req->send.buffer, req->send.length);
+    }
+    return sizeof(ucp_migrate_msg_t) + req->send.length;
+}
+
 static ucs_status_t ucp_migration_progress_msg(uct_pending_req_t *self)
 {
     ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
-    ucs_mpool_put(req);
+    ucp_ep_h ep = req->send.ep;
+    ssize_t packed_len;
+
+    /* send the active message */
+    req->send.lane = ucp_ep_get_am_lane(ep);
+    packed_len = uct_ep_am_bcopy(ep->uct_eps[req->send.lane], UCP_AM_ID_MIGRATION,
+                                 ucp_migration_msg_pack, req);
+    if (packed_len < 0) {
+        if (packed_len != UCS_ERR_NO_RESOURCE) {
+            ucs_error("failed to send wireup: %s", ucs_status_string(packed_len));
+        }
+        fprintf(stderr, "#%lu send OK\n", ep->worker->uuid);
+        return (ucs_status_t)packed_len;
+    }
+
+    //ucp_request_t *req = ucs_container_of(self, ucp_request_t, send.uct);
+    //ucs_mpool_put(req);
     return UCS_OK;
 }
 
@@ -49,16 +75,20 @@ static ucs_status_t ucp_migration_send_msg_with_address(ucp_worker_h worker,
     ucp_request_t* req;
 
     /* Send acknowledgement */
+    fprintf(stderr, "#%lu sent new MIGRATION MESSAGE to %lu: %d\n", worker->uuid, dest_uuid, type);
     ucs_trace_req("migration msg type#%i target_uuid %"PRIx64, type, dest_uuid);
     req = ucp_worker_allocate_reply(worker, dest_uuid);
 
-    req->send.proto.am_id           = UCP_AM_ID_MIGRATION;
     req->send.migration.type        = type;
     if (id) {
-        req->send.migration.source_uuid = id;
+        req->send.migration.ep_id = id;
+        req->send.migration.total_clients = worker->migration.source.count;
     } else {
-        req->send.migration.source_uuid = worker->uuid;
+        req->send.migration.ep_id = worker->uuid;
+        req->send.migration.total_clients = worker->migration.source.count;
     }
+    req->send.migration.origin = worker->uuid;
+
     req->send.uct.func              = ucp_migration_progress_msg;
     req->send.datatype              = ucp_dt_make_contig(1);
 
@@ -76,6 +106,8 @@ static ucs_status_t ucp_migration_send_msg_with_address(ucp_worker_h worker,
                 return status;
             }
         }
+    } else {
+        req->send.length = 0;
     }
 
     return ucp_request_start_send(req);
@@ -89,8 +121,8 @@ static inline ucs_status_t ucp_migration_send_msg(ucp_worker_h worker,
 }
 ucs_status_t ucp_migration_send_complete(ucp_worker_h worker)
 {
-    ucp_migration_send_msg(worker, UCP_MIGRATION_MSG_MIGRATE_COMPLETE, worker->migration.destination.source_uuid);
-    worker->migration.destination.source_uuid = 0;
+    ucp_migration_send_msg(worker, worker->migration.destination.source_uuid, UCP_MIGRATION_MSG_MIGRATE_COMPLETE);
+    //worker->migration.destination.source_uuid = 0;
     return UCS_OK;
 }
 
@@ -102,6 +134,8 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 
     ucp_worker_h worker   = arg;
     ucp_migrate_msg_t *msg = data;
+
+    fprintf(stderr, "#%lu got new MIGRATION MESSAGE: %hu\n", worker->uuid, msg->type);
 
     if (msg->type == UCP_MIGRATION_MSG_STANDBY) {
        /* This means I am the client and I just got a message from s1 that s1
@@ -141,11 +175,11 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 
 		/* I just got info from s1. I need s1's endpoint for later in redirect, so store it now */
     	if (worker->migration.destination.source_uuid == 0) {
+    	    fprintf(stderr, "#%lu got new UCP_MIGRATION_MSG_MIGRATE: total_clients=%lu\n", worker->uuid, msg->total_clients);
+            worker->migration.clients_ack = msg->total_clients;
     		worker->migration.clients_total = msg->total_clients;
+    		worker->migration.destination.source_uuid = msg->origin;
     	}
-
-		worker->migration.destination.source_uuid = msg->ep_id;
-		uint64_t client_id = msg->ep_id;
 
 // Alex's code below gets the end point we neet for new connection s2->client.
 //		uint64_t dest = data->migration.migr_addr.client_uuid
@@ -159,9 +193,8 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 		}
 
 		/* create msg_redirect, send to client, add client ID in the payload */
-		new_ep = worker->migration.source.new_eps[worker->migration.source.new_ep_cnt];
 		worker->migration.source.new_eps[worker->migration.source.new_ep_cnt++] = new_ep;
-		ucp_wireup_send_request(new_ep, client_id);
+		ucp_wireup_send_request(new_ep, msg->ep_id);
 
     } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE_COMPLETE) {
 
@@ -180,19 +213,28 @@ out:
 ucs_status_t ucp_worker_migrate(ucp_worker_h worker, ucp_ep_h target)
 {
     ucp_ep_h ep;
+    int i = 1000000;
 
     /* Initialize migration context */
     memset(&worker->migration, 0, sizeof(worker->migration));
+    worker->migration.source.dest_uuid = target->dest_uuid;
+    worker->migration.source.count = kh_size(&worker->ep_hash);
+
+    fprintf(stderr, "#%lu calls ucp_worker_migrate().\n", worker->uuid);
 
     /* Send all the clients STANDBY */
     kh_foreach_value(&worker->ep_hash, ep,
-                     ucp_migration_send_msg(worker, UCP_MIGRATION_MSG_STANDBY,
-                             ep->dest_uuid));
+                     ucp_migration_send_msg(worker, ep->dest_uuid,
+                             UCP_MIGRATION_MSG_STANDBY));
+
+    fprintf(stderr, "#%lu Done sending UCP_MIGRATION_MSG_STANDBY to peers. now waiting...\n", worker->uuid);
 
     /* Wait until the <taget> fnished the migration */
-    while (!worker->migration.is_complete) {
+    while (--i && (worker->migration.is_complete == 0)) {
     	ucp_worker_progress(worker);
     }
+
+    fprintf(stderr, "#%lu DONE COMPLETE!\n\n\n\n", worker->uuid);
 
     return UCS_OK;
 }
@@ -241,4 +283,4 @@ static void ucp_migration_msg_dump(ucp_worker_h worker, uct_am_trace_type_t type
 }
 
 UCP_DEFINE_AM(-1, UCP_AM_ID_MIGRATION, ucp_migration_msg_handler,
-              ucp_migration_msg_dump, UCT_AM_CB_FLAG_ASYNC);
+              ucp_migration_msg_dump, UCT_AM_CB_FLAG_SYNC);
