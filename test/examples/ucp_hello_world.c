@@ -265,7 +265,7 @@ err:
     return ret;
 }
 
-static int run_ucx_server(ucp_worker_h ucp_worker)
+static int run_ucx_server(ucp_worker_h ucp_worker, ucp_address_t *other_server)
 {
     ucp_tag_recv_info_t info_tag;
     ucp_tag_message_h msg_tag;
@@ -368,6 +368,23 @@ static int run_ucx_server(ucp_worker_h ucp_worker)
 
     ret = 0;
     free(msg);
+
+    if (other_server) {
+        ucp_ep_h other_ep;
+        ep_params.address = other_server;
+
+        status = ucp_ep_create(ucp_worker, &ep_params, &other_ep);
+        if (status != UCS_OK) {
+            goto err;
+        }
+
+        /* cross fingers here! */
+        printf("MIGRATION STARTED!");
+        ucp_worker_migrate(ucp_worker, other_ep);
+        printf("OMG MIGRATION COMPLETE OMG!");
+
+        ucp_ep_destroy(other_ep);
+    }
 
 err_ep:
     ucp_ep_destroy(client_ep);
