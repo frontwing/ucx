@@ -112,6 +112,8 @@ void ucx_perf_calc_result(ucx_perf_context_t *perf, ucx_perf_result_t *result);
 
 static UCS_F_ALWAYS_INLINE int ucx_perf_context_done(ucx_perf_context_t *perf)
 {
+    if(perf->current.iters>100) ucp_worker_migrate(perf->ucp.worker, perf->ucp.peers[2].ep);
+
     return ucs_unlikely((perf->current.iters >= perf->max_iter) ||
                         (perf->current.time  > perf->end_time));
 }
