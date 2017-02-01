@@ -33,7 +33,7 @@ enum {
 typedef struct ucp_migrate_msg {
     uint8_t          type;                /* Message type */
     union {
-        migration_id_t id;
+        migration_id_t source;
         uint64_t ep_id;
         struct {
         	migration_id_t client_id;
