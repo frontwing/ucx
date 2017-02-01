@@ -69,12 +69,10 @@ static const ucp_tag_t tag  = 0x1337a880u;
 static const ucp_tag_t tag_mask = -1;
 static ucp_address_t *local_addr;
 static ucp_address_t *peer_addr;
-static ucp_address_t *server1_addr;
 static ucp_address_t *server2_addr;
 
 static size_t local_addr_len;
 static size_t peer_addr_len;
-static size_t server1_addr_len;
 static size_t server2_addr_len;
 
 static int parse_cmd(int argc, char * const argv[]);
@@ -574,9 +572,9 @@ int main(int argc, char **argv)
 	/* 0 is client, 1 is first server, 2 is second server */
 	if(rank == CLIENT) /* client */
 	{
-		MPI_Recv(&server1_addr_len, 1, MPI_INT, S1, S1C, MPI_COMM_WORLD, &req);
-		server1_addr = malloc(sizeof(char)*server1_addr_len);
-		MPI_Recv(server1_addr, local_addr_len, MPI_CHAR, S1, S1C, MPI_COMM_WORLD, &req);
+		MPI_Recv(&peer_addr_len, 1, MPI_INT, S1, S1C, MPI_COMM_WORLD, &req);
+		peer_addr = malloc(sizeof(char)*peer_addr_len);
+		MPI_Recv(peer_addr, local_addr_len, MPI_CHAR, S1, S1C, MPI_COMM_WORLD, &req);
 		/* send my address to first server. get address for second server for migration */
 	}
 	else if(rank == S1) /* first server */
