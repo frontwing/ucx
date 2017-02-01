@@ -155,6 +155,9 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 		// 3. Foreach(client) -> Create msg_redirect msg with client ID in it and send to each client
 		
 		/* I just got info from s1. I need s1's endpoint for later in redirect, so store it now */
+    	if (worker->migration.destination.source_uuid == 0) {
+    		worker->migration.clients_total = msg->total_clients;
+    	}
 		worker->migration.destination.source_uuid = msg->ep_id;
 		uint64_t client_id = msg->migration_data_t.client_id;
 
@@ -202,8 +205,10 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                 #warning Can we decrement this, or should we have a "num_clients" that's set once all clients ack?
                 worker->migration.clients_ack--;
 		/* Do we have all of the acks? If so, send complete */
-		if(worker->migration.clients_ack == 0)
+		if(worker->migration.clients_ack == 0) {
+			worker->migration.destination.source_uuid = 0;
 			ucp_migration_send_complete(worker, worker->migration.destination.source_uuid, UCP_MIGRATION_MSG_MIGRATE_COMPLETE); /* cached earlier */
+		}
 
     } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE_COMPLETE) {
 
