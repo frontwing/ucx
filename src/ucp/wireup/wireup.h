@@ -58,6 +58,7 @@ typedef struct {
  */
 typedef struct ucp_wireup_msg {
     uint8_t          type;                /* Message type */
+    uint64_t         reconnect;           /* Endpoint UUID to reconnect (optional) */
     uint8_t          tli[UCP_MAX_LANES];  /* For REQUEST - which p2p lanes must be connected
                                              For REPLY - which p2p lanes have been connected
                                            */

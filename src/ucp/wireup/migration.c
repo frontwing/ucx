@@ -38,7 +38,18 @@ static ucs_status_t ucp_migration_progress_msg(uct_pending_req_t *self)
     return UCS_OK;
 }
 
-static ucs_status_t ucp_migration_send_msg(ucp_worker_h worker, uint64_t dest_uuid, uint8_t type)
+static ucs_status_t ucp_migration_send_msg(ucp_worker_h worker,
+                                           uint64_t dest_uuid,
+                                           uint8_t type)
+{
+    ucp_migration_send_msg_with_address(worker, dest_uuid, type, 0, 0);
+}
+
+static ucs_status_t ucp_migration_send_msg_with_address(ucp_worker_h worker,
+                                                        uint64_t dest_uuid,
+                                                        uint8_t type,
+                                                        migration_id_t id,
+                                                        uint64_t address_uuid)
 {
     ucp_request_t* req;
 
@@ -48,19 +59,27 @@ static ucs_status_t ucp_migration_send_msg(ucp_worker_h worker, uint64_t dest_uu
 
     req->send.proto.am_id           = UCP_AM_ID_MIGRATION;
     req->send.migration.type        = type;
-    /* this message has no data */
-    req->send.migration.source_uuid = worker->uuid;
+    if (id) {
+        req->send.migration.source_uuid = id;
+    } else {
+        req->send.migration.source_uuid = worker->uuid;
+    }
     req->send.uct.func              = ucp_migration_progress_msg;
     req->send.datatype              = ucp_dt_make_contig(1);
 
-    return ucp_request_start_send(req);
-}
+    if (address_uuid) {
+        /* pack all addresses */
+        ucs_status_t status = ucp_address_pack(ep->worker, ep, tl_bitmap, order,
+                                               &req->send.length, &address);
+        if (status != UCS_OK) {
+            ucs_free(req);
+            ucs_error("failed to pack address: %s", ucs_status_string(status));
+            return status;
+        }
+        req->send.buffer = address;
+    }
 
-static ucs_status_t ucp_migration_send_msg_with_address(ucp_worker_h worker, uint64_t dest_uuid,
-		uint8_t type, migration_id_t id, uint64_t address_uuid) {
-	ucp_migration_send_msg();
-	ucp_address_pack(); // TODO: add it to the sent message
-	return UCS_OK;
+    return ucp_request_start_send(req);
 }
 
 static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t ep_id)
@@ -115,15 +134,19 @@ static ucs_status_t ucp_migration_send_complete(ucp_worker_h worker){
 static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                                            size_t length, void *desc)
 {
-    ucp_worker_h worker   = arg;
-    ucp_migrate_msg_t *msg = data;
-
+    ucp_ep_h new_ep;
     uint8_t addr_indices[UCP_MAX_LANES];
     char peer_name[UCP_WORKER_NAME_MAX];
     ucp_address_entry_t *address_list;
     unsigned address_count;
     ucs_status_t status;
     uint64_t uuid;
+
+    ucp_worker_h worker   = arg;
+    ucp_migrate_msg_t *msg = data;
+    ucp_ep_params_t params;
+    params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
+    params.address = msg + 1;
 
     if (msg->type == UCP_MIGRATION_MSG_STANDBY) {
        /* This means I am the client and I just got a message from s1 that s1
@@ -166,19 +189,16 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 //		migration_id_t id = data->migration.id;
 
 		/* create new connection here based on the dest */
-		ucp_ep_params_t params;
-		params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
-		params.address = msg + 1;
-		#warning s2 needs to have new_ep_cnt set to 0 (or memset the whole worker to 0?) Also added & operator since we have an array
-		status = ucp_ep_create(worker, &params, &worker->migration.source.new_eps[worker->migration.source.new_ep_cnt++]);
+		status = ucp_ep_create(worker, &params, &new_ep);
 		if (status != UCS_OK) {
 			ucs_error("failed to unpack address: %s", ucs_status_string(status));
 			goto out;
 		}
 
 		/* create msg_redirect, send to client, add client ID in the payload */
-		ucp_ep_h new_ep = worker->migration.source.new_eps[worker->migration.source.new_ep_cnt];
-		ucp_migration_send_redirect(worker, new_ep, client_id);
+		new_ep = worker->migration.source.new_eps[worker->migration.source.new_ep_cnt];
+		worker->migration.source.new_eps[worker->migration.source.new_ep_cnt++] = new_ep;
+		ucp_wireup_send_request(worker, new_ep, client_id);
 
     } else if (msg->type == UCP_MIGRATION_MSG_REDIRECT) {
 		/* This means I am a client and am getting new "server" information. The new server information is

@@ -75,6 +75,7 @@ static unsigned ucp_wireup_address_index(const unsigned *order,
  * @param [in] rsc_tli  Resource index for every lane.
  */
 static ucs_status_t ucp_wireup_msg_send(ucp_ep_h ep, uint8_t type,
+                                        uint64_t reconnect_uuid,
                                         uint64_t tl_bitmap,
                                         const ucp_rsc_index_t *rsc_tli)
 {
@@ -98,6 +99,7 @@ static ucs_status_t ucp_wireup_msg_send(ucp_ep_h ep, uint8_t type,
     req->flags                   = 0;
     req->send.ep                 = ep;
     req->send.wireup.type        = type;
+    req->send.wireup.reconnect   = reconnect_uuid;
     req->send.uct.func           = ucp_wireup_msg_progress;
     req->send.datatype           = ucp_dt_make_contig(1);
 
@@ -331,6 +333,9 @@ static ucs_status_t ucp_wireup_msg_handler(void *arg, void *data,
         ucs_assert(address_count == 0);
         ucp_wireup_process_ack(worker, uuid);
     } else if (msg->type == UCP_WIREUP_MSG_REQUEST) {
+        if (msg->reconnect) {
+            uuid = msg->reconnect;
+        }
         ucp_wireup_process_request(worker, msg, uuid, peer_name, address_count,
                                    address_list);
     } else if (msg->type == UCP_WIREUP_MSG_REPLY) {
@@ -554,7 +559,7 @@ err:
     return status;
 }
 
-ucs_status_t ucp_wireup_send_request(ucp_ep_h ep)
+ucs_status_t ucp_wireup_send_request(ucp_ep_h ep, uint64_t reconnect_uuid)
 {
     ucp_worker_h worker = ep->worker;
     ucp_rsc_index_t rsc_tli[UCP_MAX_LANES];

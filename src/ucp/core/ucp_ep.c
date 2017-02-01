@@ -212,7 +212,7 @@ ucs_status_t ucp_ep_create(ucp_worker_h worker,
 
     /* send initial wireup message */
     if (!(ep->flags & UCP_EP_FLAG_LOCAL_CONNECTED)) {
-        status = ucp_wireup_send_request(ep);
+        status = ucp_wireup_send_request(ep, 0);
         if (status != UCS_OK) {
             goto err_destroy_ep;
         }
