@@ -85,8 +85,9 @@ typedef struct ucp_worker_migration {
     uint64_t                      migration_counter; /* Counter for migration ID generation */
     int                           is_complete;
     int                           clients_ack;
-    ucp_ep_h                      new_eps;
-    int                           new_ep_cnt;
+    ucp_ep_h                      new_eps[MAX_CLIENTS];
+    int                           new_ep_cnt; 
+    uint64_t			  source_ep_id; /* the original "server" that is migrating */
 } ucp_worker_migration_t;
 
 

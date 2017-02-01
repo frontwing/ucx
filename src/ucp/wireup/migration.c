@@ -76,7 +76,7 @@ static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t e
     req->flags                   = 0;
     req->send.proto.am_id        = UCP_AM_ID_MIGRATION;
     req->send.migration.type     = UCP_MIGRATION_MSG_STANDBY_ACK;
-    req->send.migration.id       = worker->migrations.migration_counter++;
+    req->send.migration.id       = worker->migration.migration_counter++;
     req->send.uct.func           = ucp_proto_progress_migration_msg;
     req->send.datatype           = ucp_dt_make_contig(1);
 
@@ -116,7 +116,6 @@ num_clients){
     ucp_request_t* req;
 
     /* Send migration message */
-    ucs_trace_req("UCP_MIGRATION_MSG_MIGRATE target_uuid %"PRIx64, ep_id);
     req = ucp_worker_allocate_reply(ep->worker, ep->dest_uuid);
 
     req->flags                   = 0;
@@ -124,8 +123,8 @@ num_clients){
     req->send.proto.am_id        = UCP_AM_ID_MIGRATION;
     req->send.migration.type     = UCP_MIGRATION_MSG_MIGRATE;
     req->send.migration.id       = client_id;
-    req->send.migration.migr_addr.client_uuid = client_uuid;
-    req->send.migration.migr_addr.num_clients = num_clients;
+    req->send.migration.migration_data_t.client_uuid = client_uuid;
+    req->send.migration.migration_data_t.num_clients = num_clients;
     req->send.uct.func           = ucp_proto_progress_migration_msg;
     req->send.datatype           = ucp_dt_make_contig(1);
 
@@ -133,19 +132,16 @@ num_clients){
     return ucp_request_start_send(req);
 }
 
-static ucs_status_t ucp_migration_send_redirect(ucp_worker_h worker, uint64_t ep_id, uint64_t client_id)
+static ucs_status_t ucp_migration_send_redirect(ucp_worker_h worker, ucp_ep_h ep, uint64_t client_id)
 {
     ucp_request_t* req;
 
-    /* Freeze this address */
-    ucp_ep_h ep = ucp_worker_ep_find(worker, ep_id);
-    // TODO: actually freeze sends
 
-    ucs_trace_req("send_sync_ack sender_uuid %"PRIx64" remote_request 0x%lx",
-                      sender_uuid, remote_request);
+//    ucs_trace_req("send_sync_ack sender_uuid %"PRIx64" remote_request 0x%lx",
+//                      sender_uuid, remote_request);
 
     /* Send acknowledgement */
-    req = ucp_worker_allocate_reply(worker, ep_id);
+    req = ucp_worker_allocate_reply(worker, ep->dest_uuid);
 
     req->flags                   = 0;
     req->send.ep                 = ep;
@@ -223,22 +219,29 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
 		// 1. Foreach(client) -> Unpack (client address_stuff)
 		// 2. Foreach(client) -> Establish a connection to the client based on (address_stuff)
 		// 3. Foreach(client) -> Create msg_redirect msg with client ID in it and send to each client
-		uint64_t dest = data->migration.migr_addr.client_uuid
-		migration_id_t id = data->migration.id;
+		
+		/* I just got info from s1. I need s1's endpoint for later in redirect, so store it now */
+		worker->migration.source_ep_id = msg->ep_id;
+		uint64_t client_id = msg->migration_data_t.client_id;
+
+// Alex's code below gets the end point we neet for new connection s2->client.
+//		uint64_t dest = data->migration.migr_addr.client_uuid
+//		migration_id_t id = data->migration.id;
 
 		/* create new connection here based on the dest */
 		const ucp_ep_params_t *params;
 		params->field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
 		params->address = msg + 1;
-		status = ucp_ep_create(worker, params, worker->migration.new_eps[worker->migration.new_ep_cnt++]);
+		#warning s2 needs to have new_ep_cnt set to 0 (or memset the whole worker to 0?) Also added & operator since we have an array
+		status = ucp_ep_create(worker, params, &worker->migration.new_eps[worker->migration.new_ep_cnt++]);
 		if (status != UCS_OK) {
 			ucs_error("failed to unpack address: %s", ucs_status_string(status));
 			goto out;
 		}
 
 		/* create msg_redirect, send to client, add client ID in the payload */
-		ucp_migration_send_redirect(worker, new_ep, clientID);
-        ucs_free(address_list);
+		ucp_ep_h new_ep = worker->migration.new_eps[worker->migration.new_ep_cnt];
+		ucp_migration_send_redirect(worker, new_ep, client_id);
 
     } else if (msg->type == UCP_MIGRATION_MSG_REDIRECT) {
 		/* This means I am a client and am getting new "server" information. The new server information is
@@ -251,7 +254,7 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
             goto out;
         }
 
-    	ucp_migration_handle_redirect(worker, msg->s1_ep_id, address_count, address_list);
+    	ucp_migration_handle_redirect(worker, msg->ep_id, address_count, address_list);
         ucs_free(address_list);
 
 	} else if(msg->type == UCP_MIGRATION_MSG_REDIRECT_ACK) {
@@ -266,7 +269,7 @@ static ucs_status_t ucp_migration_msg_handler(void *arg, void *data,
                 worker->migration.clients_ack--;
 		/* Do we have all of the acks? If so, send complete */
 		if(worker->migration.clients_ack == 0)
-			ucp_migration_send_complete(worker, worker->migration.s1_ep);
+			ucp_migration_send_complete(worker, worker->migration.source_ep_id); /* cached earlier */
 
     } else if (msg->type == UCP_MIGRATION_MSG_MIGRATE_COMPLETE) {
 
@@ -282,10 +285,13 @@ out:
     return UCS_OK;
 }
 
-static int send_standby_to_ep()
+#warning this function isn't called
+/*
+ucs_status_t send_standby_to_ep()
 {
-    status = ucp_migration_msg_send(ep, UCP_MIGRATION_MSG_STANDBY);
+    return (ucp_migration_msg_send(ep, UCP_MIGRATION_MSG_STANDBY));
 }
+*/
 
 ucs_status_t ucp_worker_migrate(ucp_worker_h worker, ucp_ep_h target)
 {
@@ -295,16 +301,15 @@ ucs_status_t ucp_worker_migrate(ucp_worker_h worker, ucp_ep_h target)
 
     /* Waits for client ACKs */
     int num_ep = kh_size(&worker->ep_hash);
-    while (worker->migration.clients_acked!=num_ep){
+    while (worker->migration.clients_ack!=num_ep){
 	ucp_worker_progress(worker);
     }
 
     /* Sends <target> the peer addresses */
     int hash_idx = hashCode(ep->dest_uuid);  
     	
-    kh_foreach_value(&worker->ep_hash, ep, ucp_migration_send_migrate(target, worker->migration.client_id
-
-[hash_idx]->key, ep->dest_uuid, int num_ep));
+    ah_foreach_value(&worker->ep_hash, ep, ucp_migration_send_migrate(target, 
+	worker->migration.client_id[hash_idx]->key, ep->dest_uuid, num_ep));
 
     /* Wait until the <taget> fnished the migration */
     while (!worker->migration.is_complete) {
