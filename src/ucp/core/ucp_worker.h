@@ -78,10 +78,24 @@ typedef struct ucp_worker_wakeup {
 
 
 /**
- * UCP worker wake-up context.
+ * UCP worker migration context.
  */
+#define MAX_CLIENTS 30
 typedef struct ucp_worker_migration {
-    uint64_t                      migration_counter; /* Counter for migration ID generation */
+    int                           is_complete;
+    unsigned                      clients_ack;
+    unsigned                      clients_total;
+
+    union {
+    	struct {
+    		uint64_t              dest_uuid;
+			ucp_ep_h              new_eps[MAX_CLIENTS];
+			int                   new_ep_cnt;
+    	} source;
+    	struct {
+    		uint64_t              source_uuid;
+    	} destination;
+    };
 } ucp_worker_migration_t;
 
 
@@ -95,7 +109,7 @@ typedef struct ucp_worker {
     uct_worker_h                  uct;           /* UCT worker handle */
     ucs_mpool_t                   req_mp;        /* Memory pool for requests */
     ucp_worker_wakeup_t           wakeup;        /* Wakeup-related context */
-    ucp_worker_migration_t        migrations;    /* Migration-related context */
+    ucp_worker_migration_t        migration;     /* Migration-related context */
     uint64_t                      atomic_tls;    /* Which resources can be used for atomics */
 
     int                           inprogress;
