@@ -22,8 +22,6 @@ enum {
     UCP_MIGRATION_MSG_STANDBY = 0,      /* Peer must pause sends before redirection */
     UCP_MIGRATION_MSG_STANDBY_ACK,      /* Peer acknowledges standby (and pauses) */
     UCP_MIGRATION_MSG_MIGRATE,          /* New worker sends its address to the original*/
-    //UCP_MIGRATION_MSG_REDIRECT - OBSOLETE, changed to use WIREUP messages...
-    UCP_MIGRATION_MSG_REDIRECT_ACK,     /* Peer acknowledges redirection (and resumes) */
     UCP_MIGRATION_MSG_MIGRATE_COMPLETE, /* Migration is complete! */
 };
 

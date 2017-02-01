@@ -310,6 +310,8 @@ static void ucp_wireup_process_ack(ucp_worker_h worker, uint64_t uuid)
     ucp_wireup_ep_remote_connected(ep);
 }
 
+ucs_status_t ucp_migration_send_complete(ucp_worker_h worker);
+
 static ucs_status_t ucp_wireup_msg_handler(void *arg, void *data,
                                            size_t length, void *desc)
 {
@@ -333,8 +335,10 @@ static ucs_status_t ucp_wireup_msg_handler(void *arg, void *data,
     if (msg->type == UCP_WIREUP_MSG_ACK) {
         ucs_assert(address_count == 0);
         ucp_wireup_process_ack(worker, uuid);
-        if (worker->migration.clients_total) {
-            worker->migration.clients_total--;
+        if (worker->migration.destination.source_uuid) {
+            if(--worker->migration.clients_ack == 0) {
+                ucp_migration_send_complete(worker); /* cached earlier */
+            }
         }
     } else if (msg->type == UCP_WIREUP_MSG_REQUEST) {
         if (msg->reconnect) {
