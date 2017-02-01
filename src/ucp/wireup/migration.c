@@ -38,13 +38,6 @@ static ucs_status_t ucp_migration_progress_msg(uct_pending_req_t *self)
     return UCS_OK;
 }
 
-static ucs_status_t ucp_migration_send_msg(ucp_worker_h worker,
-                                           uint64_t dest_uuid,
-                                           uint8_t type)
-{
-    ucp_migration_send_msg_with_address(worker, dest_uuid, type, 0, 0);
-}
-
 static ucs_status_t ucp_migration_send_msg_with_address(ucp_worker_h worker,
                                                         uint64_t dest_uuid,
                                                         uint8_t type,
@@ -80,6 +73,13 @@ static ucs_status_t ucp_migration_send_msg_with_address(ucp_worker_h worker,
     }
 
     return ucp_request_start_send(req);
+}
+
+static ucs_status_t ucp_migration_send_msg(ucp_worker_h worker,
+                                           uint64_t dest_uuid,
+                                           uint8_t type)
+{
+    return ucp_migration_send_msg_with_address(worker, dest_uuid, type, 0, 0);
 }
 
 static ucs_status_t ucp_migration_handle_standby(ucp_worker_h worker, uint64_t ep_id)

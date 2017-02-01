@@ -66,7 +66,7 @@ typedef struct ucp_wireup_msg {
 } UCS_S_PACKED ucp_wireup_msg_t;
 
 
-ucs_status_t ucp_wireup_send_request(ucp_ep_h ep);
+ucs_status_t ucp_wireup_send_request(ucp_ep_h ep, uint64_t reconnect_uuid);
 
 ucs_status_t ucp_wireup_select_aux_transport(ucp_ep_h ep,
                                              const ucp_address_entry_t *address_list,

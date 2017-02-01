@@ -237,7 +237,8 @@ static void ucp_wireup_process_request(ucp_worker_h worker, const ucp_wireup_msg
         }
 
         ucs_trace("ep %p: sending wireup reply", ep);
-        status = ucp_wireup_msg_send(ep, UCP_WIREUP_MSG_REPLY, tl_bitmap, rsc_tli);
+        status = ucp_wireup_msg_send(ep, UCP_WIREUP_MSG_REPLY,
+                uuid, tl_bitmap, rsc_tli);
         if (status != UCS_OK) {
             return;
         }
@@ -284,7 +285,7 @@ static void ucp_wireup_process_reply(ucp_worker_h worker, ucp_wireup_msg_t *msg,
         /* Send ACK without any address, we've already sent it as part of the request */
         ucs_trace("ep %p: sending wireup ack", ep);
         memset(rsc_tli, -1, sizeof(rsc_tli));
-        status = ucp_wireup_msg_send(ep, UCP_WIREUP_MSG_ACK, 0, rsc_tli);
+        status = ucp_wireup_msg_send(ep, UCP_WIREUP_MSG_ACK, 0, 0, rsc_tli);
         if (status != UCS_OK) {
             return;
         }
@@ -332,6 +333,9 @@ static ucs_status_t ucp_wireup_msg_handler(void *arg, void *data,
     if (msg->type == UCP_WIREUP_MSG_ACK) {
         ucs_assert(address_count == 0);
         ucp_wireup_process_ack(worker, uuid);
+        if (worker->migration.clients_total) {
+            worker->migration.clients_total--;
+        }
     } else if (msg->type == UCP_WIREUP_MSG_REQUEST) {
         if (msg->reconnect) {
             uuid = msg->reconnect;
@@ -593,7 +597,8 @@ ucs_status_t ucp_wireup_send_request(ucp_ep_h ep, uint64_t reconnect_uuid)
     }
 
     ucs_debug("ep %p: send wireup request (flags=0x%x)", ep, ep->flags);
-    status = ucp_wireup_msg_send(ep, UCP_WIREUP_MSG_REQUEST, tl_bitmap, rsc_tli);
+    status = ucp_wireup_msg_send(ep, UCP_WIREUP_MSG_REQUEST, reconnect_uuid,
+            tl_bitmap, rsc_tli);
     ep->flags |= UCP_EP_FLAG_CONNECT_REQ_SENT;
     return status;
 }
