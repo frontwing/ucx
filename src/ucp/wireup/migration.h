@@ -33,13 +33,11 @@ enum {
 typedef struct ucp_migrate_msg {
     uint8_t          type;                /* Message type */
     union {
-        migration_id_t source;
-        uint64_t ep_id;
+        migration_id_t source_uuid;
         struct {
-        	migration_id_t client_id;
-			uint64_t client_uuid;
-			uint32_t num_clients;
-        } migration_data_t;
+        	uint64_t ep_id;
+        	uint64_t total_clients;
+        };
     };
 } UCS_S_PACKED ucp_migrate_msg_t;
 

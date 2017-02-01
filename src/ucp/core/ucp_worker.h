@@ -83,7 +83,9 @@ typedef struct ucp_worker_wakeup {
 #define MAX_CLIENTS 30
 typedef struct ucp_worker_migration {
     int                           is_complete;
-    int                           clients_ack;
+    unsigned                      clients_ack;
+    unsigned                      clients_total;
+
     union {
     	struct {
     		uint64_t              dest_uuid;
