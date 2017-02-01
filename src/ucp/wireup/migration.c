@@ -298,10 +298,6 @@ ucs_status_t ucp_migration_send_request(ucp_ep_h ep)
     return status;
 }
 
-struct migration_context {
-    char clients_acked[MAX_CLIENTS];
-};
-
 static int send_standby_to_ep()
 {
     status = ucp_migration_msg_send(ep, UCP_MIGRATION_MSG_STANDBY);
@@ -315,7 +311,7 @@ ucs_status_t ucp_worker_migrate(ucp_worker_h worker, ucp_ep_h target)
 
     /* Waits for client ACKs */
     int num_ep = kh_size(&worker->ep_hash);
-    while (migration_context->clients_acked!=num_ep){
+    while (worker->migration->clients_acked!=num_ep){
 	ucp_worker_progress(worker);
     }
 
@@ -327,8 +323,8 @@ ucs_status_t ucp_worker_migrate(ucp_worker_h worker, ucp_ep_h target)
 [hash_idx]->key, ep->dest_uuid, int num_ep));
 
     /* Wait until the <taget> fnished the migration */
-    while (!migration_context->is_complete) {
-	ucp_worker_progress(worker);
+    while (!worker->migration->is_complete) {
+    	ucp_worker_progress(worker);
     }
 
     return UCS_OK;
@@ -339,7 +335,7 @@ static void ucp_migration_msg_dump(ucp_worker_h worker, uct_am_trace_type_t type
                                 char *buffer, size_t max)
 {
     ucp_context_h context       = worker->context;
-    const ucp_migration_msg_t *msg = data;
+    const ucp_migrate_msg_t *msg = data;
     char peer_name[UCP_WORKER_NAME_MAX + 1];
     ucp_address_entry_t *address_list, *ae;
     ucp_tl_resource_desc_t *rsc;
@@ -354,10 +350,12 @@ static void ucp_migration_msg_dump(ucp_worker_h worker, uct_am_trace_type_t type
     p   = buffer;
     end = buffer + max;
     snprintf(p, end - p, "MIGRATION %s [%s uuid 0x%"PRIx64"]",
-             (msg->type == UCP_MIGRATION_MSG_STANDBY     ) ? "STDBY" :
-             (msg->type == UCP_MIGRATION_MSG_STANDBY_ACK ) ? "STACK" :
-             (msg->type == UCP_MIGRATION_MSG_DESTINATION ) ? "DEST" :
-             (msg->type == UCP_MIGRATION_MSG_REDIRECT    ) ? "RDRCT" : "",
+             (msg->type == UCP_MIGRATION_MSG_STANDBY)          ? "STDBY" :
+             (msg->type == UCP_MIGRATION_MSG_STANDBY_ACK)      ? "STACK" :
+             (msg->type == UCP_MIGRATION_MSG_MIGRATE)          ? "MIG" :
+             (msg->type == UCP_MIGRATION_MSG_REDIRECT)         ? "RDRCT" :
+             (msg->type == UCP_MIGRATION_MSG_REDIRECT_ACK)     ? "DDACK" :
+             (msg->type == UCP_MIGRATION_MSG_MIGRATE_COMPLETE) ? "MIGFIN" : "",
              peer_name, uuid);
 
     p += strlen(p);
