@@ -397,9 +397,9 @@ err:
     return ret;
 }
 
-static int run_test(const char *server, ucp_worker_h ucp_worker)
+static int run_test(int server, ucp_worker_h ucp_worker)
 {
-    if (server != NULL) {
+    if (server == CLIENT) {
         return run_ucx_client(ucp_worker);
     } else {
         return run_ucx_server(ucp_worker);
@@ -521,7 +521,7 @@ int main(int argc, char **argv)
 	}
 
 
-    ret = run_test(server, ucp_worker);
+    ret = run_test(rank, ucp_worker);
 
     /* Make sure remote is disconnected before destroying local worker */
 	MPI_Barrier(MPI_COMM_WORLD);
