@@ -181,10 +181,13 @@ static int run_ucx_client(ucp_worker_h ucp_worker)
     ep_params.field_mask = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS;
     ep_params.address    = peer_addr;
 
+	fprintf(stderr," in ucx client, about to ep_create\n");
     status = ucp_ep_create(ucp_worker, &ep_params, &server_ep);
     if (status != UCS_OK) {
+			fprintf(stderr,"FAIL!!!!!!!!!!!!!!!! %s\n", ucs_status_string(status));
         goto err;
     }
+	fprintf(stderr,"in ucx client, ep created\n");
 
     msg_len = sizeof(*msg) + local_addr_len;
     msg = calloc(1, msg_len);
@@ -195,6 +198,7 @@ static int run_ucx_client(ucp_worker_h ucp_worker)
     msg->data_len = local_addr_len;
     memcpy(msg->data, local_addr, local_addr_len);
 
+	fprintf(stderr," in run_ucx_client, about to send_nb\n");
     request = ucp_tag_send_nb(server_ep, msg, msg_len,
                               ucp_dt_make_contig(1), tag,
                               send_handle);
@@ -208,6 +212,7 @@ static int run_ucx_client(ucp_worker_h ucp_worker)
         request->completed = 0; /* Reset request state before recycling it */
         ucp_request_release(request);
     }
+	fprintf(stderr," AFTER send_nb in client\n");
 
     free (msg);
 
@@ -242,6 +247,7 @@ static int run_ucx_client(ucp_worker_h ucp_worker)
         goto err_ep;
     }
 
+	fprintf(stderr,"client probe has a message, receiving it\n");
     request = ucp_tag_msg_recv_nb(ucp_worker, msg, info_tag.length,
                                   ucp_dt_make_contig(1), msg_tag,
                                   recv_handle);
@@ -258,9 +264,10 @@ static int run_ucx_client(ucp_worker_h ucp_worker)
         printf("UCX data message was received\n");
     }
 
-    printf("\n\n----- SERVER MIGRATION TIME! ----\n\n");
-    printf("%s", msg->data);
-    printf("\n\n---------------------------------\n\n");
+
+    fprintf(stderr,"\n\n----- SERVER MIGRATION TIME! ----\n\n");
+    fprintf(stderr,"%s", msg->data);
+    fprintf(stderr,"\n\n---------------------------------\n\n");
 
     msg_len = sizeof(*msg) + local_addr_len;
     msg = calloc(1, msg_len);
@@ -479,9 +486,12 @@ err:
 
 static int run_test(int rank, ucp_worker_h ucp_worker)
 {
+		fprintf(stderr,"in run_test, rank: %d\n", rank);
     if (rank == CLIENT) {
+		fprintf(stderr," in run test, going down client path, rank %d\n", rank);
         return run_ucx_client(ucp_worker);
     } else {
+		fprintf(stderr," in run test, going down server path, rank %d\n", rank);
         return run_ucx_server(ucp_worker, rank);
     }
 }
@@ -575,7 +585,7 @@ int main(int argc, char **argv)
 	{
 		MPI_Recv(&peer_addr_len, 1, MPI_INT, S1, S1C, MPI_COMM_WORLD, &stat);
 		peer_addr = malloc(sizeof(char)*peer_addr_len);
-		MPI_Recv(peer_addr, local_addr_len, MPI_CHAR, S1, S1C, MPI_COMM_WORLD, &stat);
+		MPI_Recv(peer_addr, peer_addr_len, MPI_CHAR, S1, S1C, MPI_COMM_WORLD, &stat);
 		/* send my address to first server. get address for second server for migration */
 	}
 	else if(rank == S1) /* first server */
