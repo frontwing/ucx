@@ -64,7 +64,6 @@ enum ucp_test_mode_t {
     TEST_MODE_EVENTFD
 } ucp_test_mode = TEST_MODE_PROBE;
 
-static uint16_t server_port = 13337;
 static long test_string_length = 16;
 static const ucp_tag_t tag  = 0x1337a880u;
 static const ucp_tag_t tag_mask = -1;
@@ -78,7 +77,7 @@ static size_t peer_addr_len;
 static size_t server1_addr_len;
 static size_t server2_addr_len;
 
-static int parse_cmd(int argc, char * const argv[], char **server_name);
+static int parse_cmd(int argc, char * const argv[]);
 static int run_server();
 static int run_client(const char *server);
 static void generate_random_string(char *str, int size);
@@ -525,8 +524,7 @@ int main(int argc, char **argv)
     ret = run_test(server, ucp_worker);
 
     /* Make sure remote is disconnected before destroying local worker */
-    barrier(oob_sock);
-    close(oob_sock);
+	MPI_Barrier(MPI_COMM_WORLD);
 
 err_peer_addr:
     free(peer_addr);
@@ -541,14 +539,15 @@ err_cleanup:
     ucp_cleanup(ucp_context);
 
 err:
+	MPI_Finalize();
     return ret;
 }
 
-int parse_cmd(int argc, char * const argv[], char **server_name)
+int parse_cmd(int argc, char * const argv[])
 {
     int c = 0, index = 0;
     opterr = 0;
-    while ((c = getopt(argc, argv, "wfbn:p:s:h")) != -1) {
+    while ((c = getopt(argc, argv, "wfbs:h")) != -1) {
         switch (c) {
         case 'w':
             ucp_test_mode = TEST_MODE_WAIT;
@@ -558,16 +557,6 @@ int parse_cmd(int argc, char * const argv[], char **server_name)
             break;
         case 'b':
             ucp_test_mode = TEST_MODE_PROBE;
-            break;
-        case 'n':
-            *server_name = optarg;
-            break;
-        case 'p':
-            server_port = atoi(optarg);
-            if (server_port <= 0) {
-                fprintf(stderr, "Wrong server port number %d\n", server_port);
-                return UCS_ERR_UNSUPPORTED;
-            }
             break;
         case 's':
             test_string_length = atol(optarg);
@@ -604,8 +593,8 @@ int parse_cmd(int argc, char * const argv[], char **server_name)
             return UCS_ERR_UNSUPPORTED;
         }
     }
-    fprintf(stderr, "INFO: UCP_HELLO_WORLD mode = %d server = %s port = %d\n",
-            ucp_test_mode, *server_name, server_port);
+    fprintf(stderr, "INFO: UCP_HELLO_WORLD mode = %d\n",
+            ucp_test_mode);
 
     for (index = optind; index < argc; index++) {
         fprintf(stderr, "WARNING: Non-option argument %s\n", argv[index]);
