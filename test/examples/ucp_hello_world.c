@@ -49,6 +49,12 @@
 #include <time.h>
 
 #include <mpi.h>
+#define S2S1 2
+#define S1C 1
+#define CLIENT 0
+#define S1 1
+#define S2 2
+
 struct msg {
     uint64_t        data_len;
     uint8_t         data[0];
@@ -343,7 +349,7 @@ err:
     return ret;
 }
 
-static int run_ucx_server(ucp_worker_h ucp_worker, ucp_address_t *other_server)
+static int run_ucx_server(ucp_worker_h ucp_worker, int rank)
 {
     ucp_tag_recv_info_t info_tag;
     ucp_tag_message_h msg_tag;
@@ -446,9 +452,9 @@ static int run_ucx_server(ucp_worker_h ucp_worker, ucp_address_t *other_server)
 
     ret = 0;
     free(msg);
-	if (other_server) {
+	if (rank == S2) {
 		ucp_ep_h other_ep;
-		ep_params.address = other_server;
+		ep_params.address = server2_addr;
 		
 		status = ucp_ep_create(ucp_worker, &ep_params, &other_ep);
 		if (status != UCS_OK) {
@@ -471,12 +477,12 @@ err:
     return ret;
 }
 
-static int run_test(int server, ucp_worker_h ucp_worker)
+static int run_test(int rank, ucp_worker_h ucp_worker)
 {
-    if (server == CLIENT) {
+    if (rank == CLIENT) {
         return run_ucx_client(ucp_worker);
     } else {
-        return run_ucx_server(ucp_worker);
+        return run_ucx_server(ucp_worker, rank);
     }
 }
 
@@ -520,7 +526,7 @@ int main(int argc, char **argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     /* Parse the command line */
-    if (parse_cmd(argc, argv, &server) != UCS_OK) {
+    if (parse_cmd(argc, argv) != UCS_OK) {
         goto err;
     }
     /* UCP initialization */
@@ -562,35 +568,30 @@ int main(int argc, char **argv)
     printf("[0x%x] local address length: %zu\n",
            (unsigned int)pthread_self(), local_addr_len);
 
-	MPI_Request req;
-#define S1S2 2
-#define S1C 1
-#define CLIENT 0
-#define S1 1
-#define S2 2
+	MPI_Status stat;
 	/* Exchange all addresses */
 	/* 0 is client, 1 is first server, 2 is second server */
 	if(rank == CLIENT) /* client */
 	{
-		MPI_Recv(&peer_addr_len, 1, MPI_INT, S1, S1C, MPI_COMM_WORLD, &req);
+		MPI_Recv(&peer_addr_len, 1, MPI_INT, S1, S1C, MPI_COMM_WORLD, &stat);
 		peer_addr = malloc(sizeof(char)*peer_addr_len);
-		MPI_Recv(peer_addr, local_addr_len, MPI_CHAR, S1, S1C, MPI_COMM_WORLD, &req);
+		MPI_Recv(peer_addr, local_addr_len, MPI_CHAR, S1, S1C, MPI_COMM_WORLD, &stat);
 		/* send my address to first server. get address for second server for migration */
 	}
 	else if(rank == S1) /* first server */
 	{
 		/* Send address length first */
-		MPI_Recv(&server2_addr_len, 1, MPI_INT, S2, S2S1, MPI_COMM_WORLD, &req);
+		MPI_Recv(&server2_addr_len, 1, MPI_INT, S2, S2S1, MPI_COMM_WORLD, &stat);
 		server2_addr = malloc(sizeof(char)*server2_addr_len);
 		/* send my address to client, get clients address. */
-		MPI_Recv(server2_addr, server2_addr_len, MPI_CHAR, S2, S2S1, MPI_COMM_WORLD, &req);
-		MPI_Send(local_addr_len, 1, MPI_INT, CLIENT, S1C, MPI_COMM_WORLD);
+		MPI_Recv(server2_addr, server2_addr_len, MPI_CHAR, S2, S2S1, MPI_COMM_WORLD, &stat);
+		MPI_Send(&local_addr_len, 1, MPI_INT, CLIENT, S1C, MPI_COMM_WORLD);
 		MPI_Send(local_addr, local_addr_len, MPI_CHAR, CLIENT, S1C, MPI_COMM_WORLD);
 	}
 
 	else if(rank == S2) /* second server */
 	{
-		MPI_Send(local_addr_len, 1, MPI_INT, S1, S2S1, MPI_COMM_WORLD);
+		MPI_Send(&local_addr_len, 1, MPI_INT, S1, S2S1, MPI_COMM_WORLD);
 		MPI_Send(local_addr, local_addr_len, MPI_CHAR, S1, S2S1, MPI_COMM_WORLD);
 	}
 
@@ -676,98 +677,4 @@ int parse_cmd(int argc, char * const argv[])
     return UCS_OK;
 }
 
-int run_server()
-{
-    struct sockaddr_in inaddr;
-    int lsock  = -1;
-    int dsock  = -1;
-    int optval = 1;
-    int ret;
 
-    lsock = socket(AF_INET, SOCK_STREAM, 0);
-    if (lsock < 0) {
-        fprintf(stderr, "server socket() failed\n");
-        goto err;
-    }
-
-    optval = 1;
-    ret = setsockopt(lsock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-    if (ret < 0) {
-        fprintf(stderr, "server setsockopt() failed\n");
-        goto err_sock;
-    }
-
-    inaddr.sin_family      = AF_INET;
-    inaddr.sin_port        = htons(server_port);
-    inaddr.sin_addr.s_addr = INADDR_ANY;
-    memset(inaddr.sin_zero, 0, sizeof(inaddr.sin_zero));
-    ret = bind(lsock, (struct sockaddr*)&inaddr, sizeof(inaddr));
-    if (ret < 0) {
-        fprintf(stderr, "server bind() failed\n");
-        goto err_sock;
-    }
-
-    ret = listen(lsock, 0);
-    if (ret < 0) {
-        fprintf(stderr, "server listen() failed\n");
-        goto err_sock;
-    }
-
-    printf("Waiting for connection...\n");
-
-    /* Accept next connection */
-    dsock = accept(lsock, NULL, NULL);
-    if (dsock < 0) {
-        fprintf(stderr, "server accept() failed\n");
-        goto err_sock;
-    }
-
-    close(lsock);
-
-    return dsock;
-
-err_sock:
-    close(lsock);
-
-err:
-    return -1;
-}
-
-int run_client(const char *server)
-{
-    struct sockaddr_in conn_addr;
-    struct hostent *he;
-    int connfd;
-    int ret;
-
-    connfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (connfd < 0) {
-        fprintf(stderr, "socket() failed: %m\n");
-        return -1;
-    }
-
-    he = gethostbyname(server);
-    if (he == NULL || he->h_addr_list == NULL) {
-        fprintf(stderr, "host %s not found: %s\n", server, hstrerror(h_errno));
-        goto err_conn;
-    }
-
-    conn_addr.sin_family = he->h_addrtype;
-    conn_addr.sin_port   = htons(server_port);
-
-    memcpy(&conn_addr.sin_addr, he->h_addr_list[0], he->h_length);
-    memset(conn_addr.sin_zero, 0, sizeof(conn_addr.sin_zero));
-
-    ret = connect(connfd, (struct sockaddr*)&conn_addr, sizeof(conn_addr));
-    if (ret < 0) {
-        fprintf(stderr, "run_client connect() failed: %m\n");
-        goto err_conn;
-    }
-
-    return connfd;
-
-err_conn:
-    close(connfd);
-
-    return -1;
-}
