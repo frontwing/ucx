@@ -83,8 +83,10 @@ typedef struct ucp_worker_wakeup {
 #define MAX_CLIENTS 30
 typedef struct ucp_worker_migration {
     uint64_t                      migration_counter; /* Counter for migration ID generation */
-    char                          clients_acked[MAX_CLIENTS];
-    int                           is_completed;
+    int                           is_complete;
+    int                           clients_ack;
+    ucp_ep_h                      new_eps;
+    int                           new_ep_cnt;
 } ucp_worker_migration_t;
 
 
