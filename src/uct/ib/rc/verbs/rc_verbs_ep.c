@@ -9,6 +9,7 @@
 
 #include <ucs/arch/bitops.h>
 #include <uct/ib/base/ib_log.h>
+#include <uct/ib/base/ib_umr.h>
 
 static UCS_F_ALWAYS_INLINE void
 uct_rc_verbs_ep_post_send(uct_rc_verbs_iface_t* iface, uct_rc_verbs_ep_t* ep,
