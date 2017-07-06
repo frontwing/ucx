@@ -11,6 +11,7 @@
 #include <uct/ib/rc/base/rc_iface.h>
 #include <uct/ib/base/ib_device.h>
 #include <uct/ib/base/ib_log.h>
+#include <uct/ib/base/ib_md.h>
 #include <uct/base/uct_md.h>
 #include <ucs/arch/bitops.h>
 #include <ucs/arch/cpu.h>
@@ -67,6 +68,7 @@ static void uct_rc_verbs_handle_failure(uct_ib_iface_t *ib_iface, void *arg)
     ucs_log(iface->super.super.config.failure_level,
             "Send completion with error: %s",
             ibv_wc_status_str(wc->status));
+    printf("error happended on ep=%p WR_id=%lu\n", ep, wc->wr_id);
 
     uct_rc_ep_failed_purge_outstanding(&ep->super.super.super, ib_iface,
                                        &ep->super.txqp);
@@ -642,6 +644,10 @@ void uct_rc_verbs_iface_tag_query(uct_rc_verbs_iface_t *iface,
         iface_attr->cap.tag.recv.max_iov    = 1;
         iface_attr->cap.tag.recv.min_recv   = 0;
     }
+#endif
+
+#if (HAVE_IBV_EXP_QP_CREATE_UMR_CAPS || HAVE_EXP_UMR_NEW_API)
+    iface_attr->cap.flags |= UCT_IFACE_FLAG_MEM_NC;
 #endif
 }
 
