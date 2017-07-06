@@ -90,10 +90,12 @@ err:
 }
 
 static UCS_F_ALWAYS_INLINE
-size_t ucp_dt_copy_uct(uct_iov_t *iov, size_t *iovcnt, size_t max_dst_iov,
-                       ucp_dt_state_t *state, const ucp_dt_iov_t *src_iov,
-                       ucp_datatype_t datatype, size_t length_max)
+size_t ucp_dt_iov_copy_uct(uct_iov_t *iov, size_t *iovcnt, size_t max_dst_iov,
+                           ucp_dt_state_t *state, const ucp_dt_iov_t *src_iov,
+                           ucp_datatype_t datatype, size_t length_max)
 {
+    size_t iov_offset, max_src_iov, src_it, dst_it, src_len;
+    const uct_mem_h *memh;
     size_t length_it = 0;
 
     switch (datatype & UCP_DATATYPE_CLASS_MASK) {
@@ -108,8 +110,37 @@ size_t ucp_dt_copy_uct(uct_iov_t *iov, size_t *iovcnt, size_t max_dst_iov,
         length_it = iov[0].length;
         break;
     case UCP_DATATYPE_IOV:
-        length_it = ucp_dt_iov_copy_uct(iov, iovcnt, max_dst_iov, state,
-                                        src_iov, datatype, length_max);
+        memh                        = state->dt.iov.memh;
+        iov_offset                  = state->dt.iov.iov_offset;
+        max_src_iov                 = state->dt.iov.iovcnt;
+        src_it                      = state->dt.iov.iovcnt_offset;
+        dst_it                      = 0;
+        state->dt.iov.iov_offset    = 0;
+        while ((dst_it < max_dst_iov) && (src_it < max_src_iov)) {
+            if (src_iov[src_it].count) {
+                src_len = ucp_contig_dt_length(src_iov[src_it].dt,
+                                               src_iov[src_it].count);
+                iov[dst_it].buffer  = src_iov[src_it].buffer + iov_offset;
+                iov[dst_it].length  = src_len - iov_offset;
+                iov[dst_it].memh    = memh[src_it];
+                iov[dst_it].stride  = 0;
+                iov[dst_it].count   = 1;
+                length_it          += iov[dst_it].length;
+
+                ++dst_it;
+                if (length_it >= length_max) {
+                    iov[dst_it - 1].length      -= (length_it - length_max);
+                    length_it                    = length_max;
+                    state->dt.iov.iov_offset     = iov_offset + iov[dst_it - 1].length;
+                    break;
+                }
+            }
+            iov_offset = 0;
+            ++src_it;
+        }
+
+        state->dt.iov.iovcnt_offset = src_it;
+        *iovcnt                     = dst_it;
         break;
     default:
         ucs_error("Invalid data type");

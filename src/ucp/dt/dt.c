@@ -45,6 +45,12 @@ size_t ucp_dt_pack(ucp_datatype_t datatype, void *dest, const void *src,
                                             state->offset, dest, length);
         break;
 
+    case UCP_DATATYPE_STRIDE_R:
+    case UCP_DATATYPE_STRIDE:
+        dt_ex = ucp_dt_ptr(datatype);
+        return dt_ex->stride.dim_cnt *
+                ucp_dt_count_uct_iov(dt_ex->stride.dt, 1, NULL, NULL);
+
     default:
         ucs_error("Invalid data type");
     }
@@ -69,7 +75,13 @@ ucp_datatype_t ucp_dt_create(enum ucp_dt_type type, ...)
 
     memset(dt, 0, sizeof(*dt));
 
-    if (type == UCP_DATATYPE_GENERIC) {
+    if ((type == UCP_DATATYPE_STRIDE) ||
+        (type == UCP_DATATYPE_STRIDE_R)) {
+        va_list ap;
+        va_start(ap, type);
+        ucp_dt_stride_create(&dt->stride, ap);
+        va_end(ap);
+    } else if (type == UCP_DATATYPE_GENERIC) {
         ucp_generic_dt_ops_t *ops;
         void *context;
         va_list ap;
@@ -105,6 +117,19 @@ void ucp_dt_destroy(ucp_datatype_t datatype)
     case UCP_DATATYPE_GENERIC:
         dt_ex = ucp_dt_ptr(datatype);
         ucs_free(dt_ex);
+        break;
+
+    case UCP_DATATYPE_STRIDE:
+        dt_ex = ucp_dt_ptr(datatype);
+        ucs_free(dt_ex);
+        break;
+
+    case UCP_DATATYPE_IOV_R:
+    case UCP_DATATYPE_STRIDE_R:
+        dt_ex = ucp_dt_ptr(datatype);
+        if (dt_ex->reusable.nc_memh != UCT_MEM_HANDLE_NULL) {
+            ucp_dt_reusable_destroy(&dt_ex->reusable);
+        }
         break;
 
     default:

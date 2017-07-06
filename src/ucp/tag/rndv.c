@@ -85,6 +85,9 @@ static size_t ucp_tag_rndv_rts_pack(void *dest, void *arg)
     } else {
         enum ucp_dt_type type = (sreq->send.datatype) & UCP_DATATYPE_CLASS_MASK;
         if ((type == UCP_DATATYPE_IOV) ||
+            (type == UCP_DATATYPE_IOV_R) ||
+            (type == UCP_DATATYPE_STRIDE) ||
+            (type == UCP_DATATYPE_STRIDE_R) ||
             (type == UCP_DATATYPE_GENERIC)) {
             rndv_rts_hdr->address = 0;
         }
@@ -430,6 +433,9 @@ UCS_PROFILE_FUNC_VOID(ucp_rndv_matched, (worker, rreq, rndv_rts_hdr),
         break;
 
     case UCP_DATATYPE_IOV:
+    case UCP_DATATYPE_IOV_R:
+    case UCP_DATATYPE_STRIDE:
+    case UCP_DATATYPE_STRIDE_R:
     case UCP_DATATYPE_GENERIC:
         /* if the recv side has a generic datatype,
          * send an RTR and the sender will send the data with AM messages */

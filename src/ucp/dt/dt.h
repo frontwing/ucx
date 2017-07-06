@@ -10,7 +10,9 @@
 
 #include "dt_contig.h"
 #include "dt_iov.h"
+#include "dt_stride.h"
 #include "dt_generic.h"
+#include "dt_reusable.h"
 
 #include <uct/api/uct.h>
 #include <ucs/debug/profile.h>
@@ -24,8 +26,11 @@
  * Datatype content, when requiring additional memory allocation.
  */
 typedef struct ucp_dt_extended {
-    ucp_dt_generic_t generic;
-    /* Temporarily useless - will be extended in future patches */
+    ucp_dt_reusable_t reusable; /* Must be first, for reusable optimization */
+    union {
+        ucp_dt_stride_t stride;
+        ucp_dt_generic_t generic;
+    };
 } ucp_dt_extended_t;
 
 /**
@@ -44,6 +49,13 @@ typedef struct ucp_dt_state {
             uct_mem_h             *memh;          /* Pointer to IOV memh[iovcnt] */
             uct_mem_h             contig_memh;    /* For contiguous read/write  */
         } iov;
+        struct {
+            size_t                item_offset;    /* Offset within a single item */
+            size_t                count;          /* Count total strided objects */
+            size_t                dim_index[UCP_DT_STRIDE_MAX_DIMS];
+            uct_mem_h             memh;           /* Pointer to inclusive memh */
+            uct_mem_h             contig_memh;    /* For contiguous read/write  */
+        } stride;
         struct {
             void                  *state;
         } generic;
@@ -67,6 +79,11 @@ static size_t ucp_dt_length_recursive(ucp_datatype_t datatype, size_t count,
     case UCP_DATATYPE_CONTIG:
         return ucp_contig_dt_length(datatype, count);
 
+    case UCP_DATATYPE_IOV_R:
+        dt_ex = ucp_dt_ptr(datatype);
+        if (dt_ex->reusable.iov_memh != UCT_MEM_HANDLE_NULL) {
+            return dt_ex->reusable.length;
+        }
     case UCP_DATATYPE_IOV:
         total = 0;
         for (iov_it = 0; iov_it < count; ++iov_it) {
@@ -74,6 +91,16 @@ static size_t ucp_dt_length_recursive(ucp_datatype_t datatype, size_t count,
                     iov[iov_it].count, NULL, NULL, is_extent);
         }
         return total;
+
+    case UCP_DATATYPE_STRIDE_R:
+        dt_ex = ucp_dt_ptr(datatype);
+        if (dt_ex->reusable.stride_memh != UCT_MEM_HANDLE_NULL) {
+            return dt_ex->reusable.length;
+        }
+    case UCP_DATATYPE_STRIDE:
+        dt_ex = ucp_dt_ptr(datatype);
+        return count * (is_extent ? dt_ex->stride.total_extent :
+                                    dt_ex->stride.total_length);
 
     case UCP_DATATYPE_GENERIC:
         dt_ex = ucp_dt_ptr(datatype);

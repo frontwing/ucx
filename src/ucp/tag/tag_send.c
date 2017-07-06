@@ -36,6 +36,39 @@ static ucs_status_t ucp_tag_req_start(ucp_request_t *req, size_t count,
 
     ucp_datatype_t dt = req->send.datatype;
     switch (dt & UCP_DATATYPE_CLASS_MASK) {
+    case UCP_DATATYPE_STRIDE_R:
+        is_contig = 0;
+        length = ucp_dt_length(dt, count, NULL, NULL);
+        req->send.state.dt.stride.contig_memh = UCT_MEM_HANDLE_NULL;
+        req->send.state.dt.stride.count       = count;
+        req->send.state.dt.stride.item_offset = 0;
+        memset(req->send.state.dt.stride.dim_index, 0,
+               UCP_DT_STRIDE_MAX_DIMS * sizeof(size_t));
+        zcopy_thresh = zcopy_thresh_arr[0];
+        break;
+
+
+    case UCP_DATATYPE_STRIDE:
+        is_contig = 0;
+        length = ucp_dt_length(dt, count, NULL, NULL);
+        req->send.state.dt.stride.contig_memh = UCT_MEM_HANDLE_NULL;
+        req->send.state.dt.stride.count       = count;
+        req->send.state.dt.stride.item_offset = 0;
+        memset(req->send.state.dt.stride.dim_index, 0,
+               UCP_DT_STRIDE_MAX_DIMS * sizeof(size_t));
+        goto adjust_zcopy;
+
+
+    case UCP_DATATYPE_IOV_R:
+        is_contig = 0;
+        length = ucp_dt_length(dt, count, req->send.buffer, NULL);
+        req->send.state.dt.iov.contig_memh   = UCT_MEM_HANDLE_NULL;
+        req->send.state.dt.iov.iovcnt_offset = 0;
+        req->send.state.dt.iov.iov_offset    = 0;
+        req->send.state.dt.iov.iovcnt        = count;
+        zcopy_thresh = zcopy_thresh_arr[0];
+        break;
+
     case UCP_DATATYPE_IOV:
         is_contig = 0;
         length = ucp_dt_length(dt, count, req->send.buffer, NULL);
@@ -51,6 +84,7 @@ static ucs_status_t ucp_tag_req_start(ucp_request_t *req, size_t count,
             force_sw_rndv = 1;
         }
 
+adjust_zcopy:
         if (0 == count) {
             /* disable zcopy */
             zcopy_thresh = SIZE_MAX;
@@ -183,6 +217,9 @@ ucp_tag_send_req(ucp_request_t *req, size_t count, ssize_t max_short,
     switch (req->send.datatype & UCP_DATATYPE_CLASS_MASK) {
     case UCP_DATATYPE_CONTIG:
     case UCP_DATATYPE_IOV:
+    case UCP_DATATYPE_IOV_R:
+    case UCP_DATATYPE_STRIDE:
+    case UCP_DATATYPE_STRIDE_R:
         status = ucp_tag_req_start(req, count, max_short, zcopy_thresh,
                                    rndv_rma_thresh, rndv_am_thresh, proto);
         if (status != UCS_OK) {

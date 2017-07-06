@@ -128,6 +128,34 @@ ucp_tag_recv_request_init(ucp_request_t *req, ucp_worker_h worker, void* buffer,
     req->recv.worker       = worker;
 
     switch (datatype & UCP_DATATYPE_CLASS_MASK) {
+    case UCP_DATATYPE_STRIDE_R:
+        dt_ex = ucp_dt_ptr(datatype);
+        memset(req->recv.state.dt.stride.dim_index, 0,
+               UCP_DT_STRIDE_MAX_DIMS * sizeof(size_t));
+        req->recv.state.dt.stride.contig_memh = dt_ex->reusable.nc_memh;
+        req->recv.state.dt.stride.memh        = dt_ex->reusable.stride_memh;
+        req->recv.state.dt.stride.item_offset = 0;
+        req->recv.state.dt.stride.count       = 0;
+        break;
+
+    case UCP_DATATYPE_STRIDE:
+        memset(req->recv.state.dt.stride.dim_index, 0,
+               UCP_DT_STRIDE_MAX_DIMS * sizeof(size_t));
+        req->recv.state.dt.stride.contig_memh = UCT_MEM_HANDLE_NULL;
+        req->recv.state.dt.stride.memh        = UCT_MEM_HANDLE_NULL;
+        req->recv.state.dt.stride.item_offset = 0;
+        req->recv.state.dt.stride.count       = 0;
+        break;
+
+    case UCP_DATATYPE_IOV_R:
+        dt_ex = ucp_dt_ptr(datatype);
+        req->recv.state.dt.iov.iov_offset    = 0;
+        req->recv.state.dt.iov.iovcnt_offset = 0;
+        req->recv.state.dt.iov.iovcnt        = count;
+        req->recv.state.dt.iov.contig_memh   = dt_ex->reusable.nc_memh;
+        req->recv.state.dt.iov.memh          = dt_ex->reusable.iov_memh;
+        break;
+
     case UCP_DATATYPE_IOV:
         req->recv.state.dt.iov.iov_offset    = 0;
         req->recv.state.dt.iov.iovcnt_offset = 0;
