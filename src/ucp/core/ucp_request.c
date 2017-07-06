@@ -8,6 +8,7 @@
 #include "ucp_worker.h"
 #include "ucp_request.inl"
 
+#include <ucp/proto/proto.h>
 #include <ucs/datastruct/mpool.inl>
 #include <ucs/debug/debug.h>
 #include <ucs/debug/log.h>
@@ -156,8 +157,7 @@ int ucp_request_pending_add(ucp_request_t *req, ucs_status_t *req_status)
 }
 
 static UCS_F_ALWAYS_INLINE
-void ucp_iov_buffer_memh_dereg(uct_md_h uct_md, uct_mem_h *memh,
-                               size_t count)
+void ucp_multiple_memh_dereg(uct_md_h uct_md, uct_mem_h *memh, size_t count)
 {
     size_t it;
 
@@ -169,9 +169,10 @@ void ucp_iov_buffer_memh_dereg(uct_md_h uct_md, uct_mem_h *memh,
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
-                 (context, rsc_index, buffer, length, datatype, state),
+                 (context, rsc_index, buffer, length, datatype, state, ep),
                  ucp_context_t *context, ucp_rsc_index_t rsc_index, void *buffer,
-                 size_t length, ucp_datatype_t datatype, ucp_dt_state_t *state)
+                 size_t length, ucp_datatype_t datatype, ucp_dt_state_t *state,
+                 uct_ep_h ep)
 {
     ucp_rsc_index_t mdi = context->tl_rscs[rsc_index].md_index;
     uct_md_h uct_md     = context->tl_mds[mdi].md;
@@ -186,6 +187,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
     case UCP_DATATYPE_CONTIG:
         status = uct_md_mem_reg(uct_md, buffer, length, 0, &state->dt.contig.memh);
         break;
+
     case UCP_DATATYPE_IOV:
         iovcnt = state->dt.iov.iovcnt;
         iov    = buffer;
@@ -203,7 +205,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
                                         0, &memh[iov_it]);
                 if (status != UCS_OK) {
                     /* unregister previously registered memory */
-                    ucp_iov_buffer_memh_dereg(uct_md, memh, iov_it);
+                    ucp_multiple_memh_dereg(uct_md, memh, iov_it);
                     ucs_free(memh);
                     goto err;
                 }
@@ -213,6 +215,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
         }
         state->dt.iov.memh = memh;
         break;
+
     default:
         status = UCS_ERR_INVALID_PARAM;
         ucs_error("Invalid data type %lx", datatype);
@@ -244,6 +247,7 @@ UCS_PROFILE_FUNC_VOID(ucp_request_memory_dereg,
             uct_md_mem_dereg(uct_md, state->dt.contig.memh);
         }
         break;
+
     case UCP_DATATYPE_IOV:
         memh = state->dt.iov.memh;
         for (iov_it = 0; iov_it < state->dt.iov.iovcnt; ++iov_it) {
@@ -253,6 +257,7 @@ UCS_PROFILE_FUNC_VOID(ucp_request_memory_dereg,
         }
         ucs_free(state->dt.iov.memh);
         break;
+
     default:
         ucs_error("Invalid data type");
     }
@@ -261,13 +266,14 @@ UCS_PROFILE_FUNC_VOID(ucp_request_memory_dereg,
 ucs_status_t ucp_request_send_buffer_reg(ucp_request_t *req,
                                          ucp_lane_index_t lane)
 {
+    uct_ep_h ep               = req->send.ep->uct_eps[lane];
     ucp_context_t *context    = req->send.ep->worker->context;
     req->send.reg_rsc         = ucp_ep_get_rsc_index(req->send.ep, lane);
     ucs_assert(req->send.reg_rsc != UCP_NULL_RESOURCE);
 
     return ucp_request_memory_reg(context, req->send.reg_rsc,
                                   (void*)req->send.buffer, req->send.length,
-                                  req->send.datatype, &req->send.state);
+                                  req->send.datatype, &req->send.state, ep);
 }
 
 void ucp_request_send_buffer_dereg(ucp_request_t *req, ucp_lane_index_t lane)
