@@ -240,9 +240,9 @@ enum ucp_worker_attr_field {
 enum ucp_dt_type {
     UCP_DATATYPE_CONTIG   = 0,      /**< Contiguous datatype */
     UCP_DATATYPE_IOV      = 2,      /**< Scatter-gather list with multiple pointers */
-    UCP_DATATYPE_IOV_R    = 3,      /**< Same as IOV, but reusable */
-    UCP_DATATYPE_STRIDE   = 4,      /**< Interleaving a pointers to strided data */
-    UCP_DATATYPE_STRIDE_R = 5,      /**< Strided datatype */
+    //UCP_DATATYPE_IOV_R    = 3,      /**< Same as IOV, but reusable */
+    //UCP_DATATYPE_STRIDE   = 4,      /**< Interleaving a pointers to strided data */
+    //UCP_DATATYPE_STRIDE_R = 5,      /**< Strided datatype */
     UCP_DATATYPE_GENERIC  = 7,      /**< Generic datatype with
                                          user-defined pack/unpack routines */
     UCP_DATATYPE_SHIFT    = 3,      /**< Number of bits defining

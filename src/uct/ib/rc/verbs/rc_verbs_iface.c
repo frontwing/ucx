@@ -772,6 +772,7 @@ static uct_rc_iface_ops_t uct_rc_verbs_iface_ops = {
     .ep_destroy               = UCS_CLASS_DELETE_FUNC_NAME(uct_rc_verbs_ep_t),
     .ep_get_address           = uct_rc_verbs_ep_get_address,
     .ep_connect_to_ep         = uct_rc_verbs_ep_connect_to_ep,
+    .ep_mem_reg_nc            = uct_rc_ep_reg_nc,
     .iface_flush              = uct_rc_iface_flush,
     .iface_fence              = uct_base_iface_fence,
     .iface_progress_enable    = ucs_empty_function,
