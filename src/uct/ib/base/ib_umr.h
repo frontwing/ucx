@@ -24,7 +24,17 @@ typedef struct uct_ib_umr {
     uct_completion_t comp;   /* completion routine */
     ep_post_dereg_f dereg_f; /* endpoint WR posting function pointer */
     uct_ep_t *tl_ep;         /* registering endpoint - for cleanup */
-    struct ibv_exp_mem_region *mem_iov;
+
+    union {
+        struct ibv_exp_mem_region *mem_iov;
+        struct {
+            struct ibv_exp_mem_repeat_block *mem_strided; //[UCT_IB_UMR_MAX_KLMS]
+            size_t *repeat_length; //[UCT_IB_UMR_MAX_KLMS][stride_dim]
+            size_t *repeat_stride; //[UCT_IB_UMR_MAX_KLMS][stride_dim]
+            size_t *repeat_count; //[stride_dim];
+            unsigned stride_dim;
+        };
+    };
 } uct_ib_umr_t;
 
 ucs_status_t uct_ib_umr_init(uct_ib_md_t *md, unsigned klm_cnt, uct_ib_umr_t *umr);
@@ -35,6 +45,11 @@ void uct_ib_umr_finalize(uct_ib_umr_t *umr);
 ucs_status_t uct_ib_umr_reg_offset(uct_ib_md_t *md, struct ibv_mr *mr,
                                    off_t offset, struct ibv_mr **offset_mr,
                                    uct_ib_umr_t **umr_p);
+
+ucs_status_t uct_ib_umr_reg_nc(uct_md_h uct_md, const uct_iov_t *iov,
+                               size_t iovcnt, uct_ep_h tl_ep,
+                               ep_post_dereg_f dereg_f, uct_ib_mem_t *memh,
+                               struct ibv_exp_send_wr **wr_p);
 
 ucs_status_t uct_ib_umr_dereg_nc(uct_ib_umr_t *umr);
 

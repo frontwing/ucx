@@ -193,6 +193,17 @@ static inline int ibv_exp_cq_ignore_overrun(struct ibv_cq *cq)
 #  define IBV_DEVICE_TM_CAPS(_dev, _field)  0
 #endif
 
+/*
+ * Fast memory registration (UMR) support
+ */
+#if HAVE_STRUCT_IBV_EXP_DEVICE_ATTR_UMR_CAPS
+#  define IBV_EXP_HAVE_UMR(_attr)                   ((_attr)->exp_device_cap_flags & IBV_EXP_DEVICE_UMR)
+#  define IBV_DEVICE_UMR_CAPS(_attr, _field)        ((_attr)->umr_caps._field)
+#else
+#  define IBV_EXP_HAVE_UMR(_attr)                   0
+#  define IBV_DEVICE_UMR_CAPS(_attr, _field)        0
+#endif
+
 
 typedef uint8_t uct_ib_uint24_t[3];
 

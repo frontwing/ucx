@@ -170,6 +170,14 @@ static ucs_status_t uct_ib_md_query(uct_md_h uct_md, uct_md_attr_t *md_attr)
         md_attr->cap.flags |= UCT_MD_FLAG_ALLOC;
     }
 
+    if (IBV_EXP_HAVE_UMR(&md->dev.dev_attr)) {
+        md_attr->cap.flags |= UCT_MD_FLAG_REG_NC;
+    }
+
+    if (IBV_EXP_HAVE_UMR(&md->dev.dev_attr)) {
+        md_attr->cap.flags |= UCT_MD_FLAG_REG_NC;
+    }
+
     md_attr->reg_cost      = md->reg_cost;
     md_attr->local_cpus    = md->dev.local_cpus;
     return UCS_OK;
@@ -207,6 +215,9 @@ static ucs_status_t uct_ib_md_umr_qp_create(uct_ib_md_t *md)
     ucs_status_t status = UCS_ERR_IO_ERROR;
 
     ibdev = &md->dev;
+    if (!IBV_EXP_HAVE_UMR(&ibdev->dev_attr)) {
+        return UCS_ERR_UNSUPPORTED;
+    }
 
     /* TODO: fix port selection. It looks like active port should be used */
     port_num = ibdev->first_port;

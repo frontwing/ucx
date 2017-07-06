@@ -214,6 +214,14 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
             }
         }
         state->dt.iov.memh = memh;
+
+        /* If non-contiguous bind is not supported - use the existing mapping */
+        uct_md_attr = &context->tl_mds[mdi].attr;
+        if (!(uct_md_attr->cap.flags & UCT_MD_FLAG_REG_NC)) {
+            break;
+        }
+
+        status = ucp_dt_reusable_create(ep, buffer, length, datatype, state);
         break;
 
     default:
