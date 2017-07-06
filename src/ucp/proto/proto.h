@@ -13,6 +13,7 @@
 #include <ucp/core/ucp_worker.h>
 #include <ucs/sys/compiler.h>
 #include <ucs/sys/sys.h>
+#include <ucp/dt/dt.h>
 
 
 /**
