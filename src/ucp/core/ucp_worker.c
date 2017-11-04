@@ -212,6 +212,17 @@ static void ucp_worker_am_tracer(void *arg, uct_am_trace_type_t type,
     }
 }
 
+static ucs_status_t ucp_worker_coll_init(ucp_worker_h worker,
+                                           const ucp_worker_params_t *params)
+{
+    return ucp_coll_init(&worker->coll_ctx);
+}
+
+static void ucp_worker_coll_cleanup(ucp_worker_h worker)
+{
+    ucp_coll_finalize(worker->coll_ctx);
+}
+
 static ucs_status_t ucp_worker_wakeup_init(ucp_worker_h worker,
                                            const ucp_worker_params_t *params)
 {
@@ -1250,10 +1261,16 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
         goto err_destroy_uct_worker;
     }
 
+    /* Initialize collective operations */
+    status = ucp_worker_coll_init(worker, params);
+    if (status != UCS_OK) {
+        goto err_req_mp_cleanup;
+    }
+
     /* Create epoll set which combines events from all transports */
     status = ucp_worker_wakeup_init(worker, params);
     if (status != UCS_OK) {
-        goto err_req_mp_cleanup;
+        goto err_coll_cleanup;
     }
 
     if (params->field_mask & UCP_WORKER_PARAM_FIELD_CPU_MASK) {
@@ -1297,6 +1314,8 @@ err_close_ifaces:
     ucp_tag_match_cleanup(&worker->tm);
 err_wakeup_cleanup:
     ucp_worker_wakeup_cleanup(worker);
+err_coll_cleanup:
+	ucp_worker_coll_cleanup(worker);
 err_req_mp_cleanup:
     ucs_mpool_cleanup(&worker->req_mp, 1);
 err_destroy_uct_worker:

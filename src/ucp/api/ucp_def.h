@@ -220,6 +220,80 @@ enum ucp_mem_attr_field {
 
 
 /**
+ * @ingroup UCP_GROUP
+ * @brief UCP Group
+ *
+ * UCP group is an opaque object representing a mutually-agreed group of
+ * workers, supporting collective operations as defined by the MPI standard.
+ */
+typedef struct ucp_coll_group            *ucp_group_h;
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief UCP Collective descriptor
+ *
+ * UCP Collective descriptor is an opaque handle for a collective returned by
+ * @ref ucp_coll_group_collective_create. This handle can be passed to
+ * @ref ucp_coll_group_collective_start in order to start an instance of this collective.
+ */
+typedef struct ucp_coll_op              *ucp_coll_h;
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief UCP Collective reduction operation
+ *
+ * UCP Collectives may include a reduce operation, implemented by an external library.
+ * This handle represents the reduction operation requested, e.g. sum, xor or max.
+ */
+typedef void                            *ucp_coll_reduce_op_h; // struct ompi_op_t
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief UCP Collective reduction operation
+ *
+ * UCP Collectives may include a reduce operation, implemented by an external library.
+ * This handle represents the reduction datatype requested, e.g. integer or float.
+ */
+typedef void                            *ucp_coll_reduce_datatype_h; // struct ompi_datatype_t
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief UCP Collective process descriptor
+ *
+ * UCP Collectives may reference a process, referenced by an external library, such
+ * as the case of a reduction root/destination.
+ * This handle represents the reduction root requested, e.g. integer or float.
+ */
+typedef void                            *ucp_coll_proc_h; // struct ompi_proc_t
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief UCP Collective process descriptor
+ *
+ * UCP Collectives may reference a process, referenced by an external library, such
+ * as the case of a reduction root/destination.
+ * This handle represents the reduction root requested, e.g. integer or float.
+ */
+typedef uint32_t                            ucp_group_rank_t; // MPI Rank (within a communicator)
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief UCP Collective process descriptor
+ *
+ * UCP Collectives may reference a process, referenced by an external library, such
+ * as the case of a reduction root/destination.
+ * This handle represents the reduction root requested, e.g. integer or float.
+ */
+typedef void                            *ucp_coll_comm_h; // struct MPI_Comm
+
+
+/**
  * @ingroup UCP_COMM
  * @brief UCP Tag Identifier
  *
@@ -272,6 +346,24 @@ typedef void (*ucp_request_init_callback_t)(void *request);
  * @param [in]  request   Request handle to cleanup.
  */
 typedef void (*ucp_request_cleanup_callback_t)(void *request);
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Completion callback for non-blocking collective operations.
+ *
+ * This callback routine is invoked whenever the @ref ucp_group_collective
+ * "collective operation" is completed. It is important to note that the call-back is
+ * only invoked in a case when the operation cannot be completed in place.
+ *
+ * @param [in]  request   The completed send request.
+ * @param [in]  status    Completion status. If the send operation was completed
+ *                        successfully UCX_OK is returned. If send operation was
+ *                        canceled UCS_ERR_CANCELED is returned.
+ *                        Otherwise, an @ref ucs_status_t "error status" is
+ *                        returned.
+ */
+typedef void (*ucp_group_collective_callback_t)(void *request, ucs_status_t status);
 
 
 /**

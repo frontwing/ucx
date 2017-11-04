@@ -11,6 +11,7 @@
 #include "ucp_ep.h"
 #include "ucp_thread.h"
 
+#include <ucp/coll/group.h>
 #include <ucp/proto/proto.h>
 #include <ucp/tag/tag_match.h>
 #include <ucp/wireup/ep_match.h>
@@ -183,6 +184,7 @@ typedef struct ucp_worker {
     ucp_mt_lock_t                 mt_lock;       /* Configuration of multi-threading support */
     ucp_tag_match_t               tm;            /* Tag-matching queues and offload info */
     ucp_ep_h                      mem_type_ep[UCT_MD_MEM_TYPE_LAST];/* memory type eps */
+    ucp_coll_ctx_t                *coll_ctx;     /* Collective operations context */
 
     UCS_STATS_NODE_DECLARE(stats);
     UCS_STATS_NODE_DECLARE(tm_offload_stats);

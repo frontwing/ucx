@@ -11,6 +11,7 @@ dist_examples_DATA = \
 	ucp_hello_world.c \
 	uct_hello_world.c \
 	ucx_profiling.c \
+	ucp_collective.c \
 	ucp_client_server.c
 
 EXAMPLE_CC_FLAGS = -lucs -I$(includedir) -L$(libdir) -Wall -Werror -Wl,-rpath,$(libdir)
@@ -20,5 +21,8 @@ installcheck-local:
 	$(CC) -o uct_hello_world   $(examplesdir)/uct_hello_world.c   -luct $(EXAMPLE_CC_FLAGS) -pedantic
 	$(CC) -o ucp_hello_world   $(examplesdir)/ucp_hello_world.c   -lucp $(EXAMPLE_CC_FLAGS) -pedantic
 	$(CC) -o ucp_client_server $(examplesdir)/ucp_client_server.c -lucp $(EXAMPLE_CC_FLAGS) -pedantic
+if HAVE_MPICC
+	$(MPICC) -o ucp_collective $(examplesdir)/ucp_collective.c    -lucp $(EXAMPLE_CC_FLAGS) -pedantic
+endif
 	$(CC) -o ucx_profiling     $(examplesdir)/ucx_profiling.c     -lucs $(EXAMPLE_CC_FLAGS) -Wall -lm
 	$(RM) *.o uct_hello_world ucp_hello_world ucp_client_server ucx_profiling

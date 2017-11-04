@@ -144,7 +144,9 @@ enum ucp_feature {
                                            operations support */
     UCP_FEATURE_WAKEUP = UCS_BIT(4),  /**< Request interrupt notification
                                            support */
-    UCP_FEATURE_STREAM = UCS_BIT(5)   /**< Request stream support */
+    UCP_FEATURE_STREAM = UCS_BIT(5),  /**< Request stream support */
+    UCP_FEATURE_COLL   = UCS_BIT(6)   /**< Request collective operations
+                                           support */
 };
 
 
@@ -199,7 +201,8 @@ enum ucp_ep_params_field {
                                                             transport level errors */
     UCP_EP_PARAM_FIELD_USER_DATA         = UCS_BIT(3), /**< User data pointer */
     UCP_EP_PARAM_FIELD_SOCK_ADDR         = UCS_BIT(4), /**< Socket address field */
-    UCP_EP_PARAM_FIELD_FLAGS             = UCS_BIT(5)  /**< Endpoint flags */
+    UCP_EP_PARAM_FIELD_FLAGS             = UCS_BIT(5), /**< Endpoint flags */
+    UCP_EP_PARAM_FIELD_CUSTOM_UUID       = UCS_BIT(6)  /**< Custom hash key for lookup */
 };
 
 
@@ -313,6 +316,104 @@ enum ucp_context_attr_field {
 enum ucp_worker_attr_field {
     UCP_WORKER_ATTR_FIELD_THREAD_MODE = UCS_BIT(0)  /**< UCP thread mode */
 };
+
+typedef enum ucp_coll_distance {
+	UCP_COLL_DISTANCE_ME,
+	UCP_COLL_DISTANCE_SOCKET,
+	UCP_COLL_DISTANCE_HOST,
+	UCP_COLL_DISTANCE_FABRIC,
+
+	UCP_COLL_DISTANCE_LAST
+} ucp_coll_distance_t;
+
+typedef ucs_status_t (*ucp_group_resolve_f)(ucp_group_rank_t rank, ucp_ep_h *ep);
+
+typedef struct ucp_group_create_params {
+	ucp_group_rank_t     my_rank;    /* my rank in the new group */
+	ucp_coll_comm_h      cb_group;   /* external group for callbacks */
+
+	unsigned             proc_count; /* size of process array */
+	ucp_coll_proc_h     *procs;      /* array of process */
+	ucp_coll_distance_t *distances;  /* array of distances (per-proc) */
+	ucp_group_resolve_f  resolver;   /* address resolution by rank (callback) */
+
+    struct {
+    	unsigned         radix;      /* Radix of the collective topology tree */
+    	// TODO: topology?
+    } tree;
+
+	struct {
+		int32_t (*copy)(const ucp_coll_reduce_datatype_h type, size_t count, char* pDestBuf, char* pSrcBuf);
+		void    (*reduce)(ucp_coll_reduce_op_h op, void *source, void *target, int count, ucp_coll_reduce_datatype_h dtype);
+	} datatype;
+	/* group topology info! */
+} ucp_group_create_params_t;
+
+enum ucp_group_collective_type {
+    UCP_GROUP_COLLECTIVE_TYPE_BARRIER,
+    UCP_GROUP_COLLECTIVE_TYPE_BCAST,
+    UCP_GROUP_COLLECTIVE_TYPE_REDUCE,
+    UCP_GROUP_COLLECTIVE_TYPE_REDUCE_SCATTER,
+    UCP_GROUP_COLLECTIVE_TYPE_ALLREDUCE,
+    UCP_GROUP_COLLECTIVE_TYPE_ALLREDUCE_SCATTER,
+    UCP_GROUP_COLLECTIVE_TYPE_SCATTER,
+    UCP_GROUP_COLLECTIVE_TYPE_SCATTERV,
+    UCP_GROUP_COLLECTIVE_TYPE_GATHER,
+    UCP_GROUP_COLLECTIVE_TYPE_GATHERV,
+    UCP_GROUP_COLLECTIVE_TYPE_ALLGATHER,
+    UCP_GROUP_COLLECTIVE_TYPE_ALLGATHERV,
+    UCP_GROUP_COLLECTIVE_TYPE_ALLTOALL,
+    UCP_GROUP_COLLECTIVE_TYPE_ALLTOALLV,
+    UCP_GROUP_COLLECTIVE_TYPE_ALLTOALLW,
+    UCP_GROUP_COLLECTIVE_TYPE_SCAN,
+    UCP_GROUP_COLLECTIVE_TYPE_EXSCAN,
+
+    /* Complex collectives */
+    UCP_GROUP_COLLECTIVE_TYPE_FFT,
+
+    UCP_GROUP_COLLECTIVE_TYPE_LAST
+};
+
+enum ucp_group_collective_modifiers {
+    UCP_GROUP_COLLECTIVE_MODIFIER_TARGET_RANK = 0,
+    UCP_GROUP_COLLECTIVE_MODIFIER_REDUCE_ORDERED,
+    UCP_GROUP_COLLECTIVE_MODIFIER_IN_PLACE,
+    UCP_GROUP_COLLECTIVE_MODIFIER_ASYNC,
+    UCP_GROUP_COLLECTIVE_MODIFIER_NEIGHBOR,
+
+    UCP_GROUP_COLLECTIVE_MODIFIER_LAST
+};
+
+enum ucp_group_collective_reduce_type {
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_MAX,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_MIN,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_SUM,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_PROD,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_LAND,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_BAND,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_LOR,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_BOR,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_LXOR,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_BXOR,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_MAXLOC,
+    UCP_GROUP_COLLECTIVE_REDUCE_OP_MINLOC
+};
+
+typedef struct ucp_group_collective_params {
+    enum ucp_group_collective_type            type;     /* type of collective requested */
+    enum ucp_group_collective_modifiers       flags;
+    unsigned                                  root;     /* root rank number */
+    void                                     *sbuf;     /* data to submit */
+    void                                     *rbuf;     /* buffer to receive the result */
+    ucp_coll_reduce_datatype_h                datatype; /* item type */
+    unsigned                                  dcount;   /* item count */
+    size_t                                    dsize;    /* item count */
+    struct {  /* only for all/reduce: */
+		enum ucp_group_collective_reduce_type type; /* operator type */
+		ucp_coll_reduce_op_h                  op;   /* optional operator pointer (NULL - do internally) */
+    } reduce;
+    ucp_group_collective_callback_t           cb;
+} ucp_group_collective_params_t;
 
 /**
  * @ingroup UCP_DATATYPE
@@ -889,6 +990,10 @@ typedef struct ucp_ep_params {
      */
     ucs_sock_addr_t         sockaddr;
 
+    /*
+     * ...
+     */
+    ucp_coll_proc_h         target_process; // TODO: rename & document
 } ucp_ep_params_t;
 
 
@@ -1333,6 +1438,75 @@ void ucp_worker_release_address(ucp_worker_h worker, ucp_address_t *address);
  * @return Non-zero if any communication was progressed, zero otherwise.
  */
 unsigned ucp_worker_progress(ucp_worker_h worker);
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Create a group object.
+ *
+ * This routine allocates and initializes a @ref ucp_group_h "group" object.
+ *
+ * @note The group object is allocated within context of the calling thread
+ *
+ * @param [in] worker      Worker to create a group on top of.
+ * @param [in] params      User defined @ref ucp_group_params_t configurations for the
+ *                         @ref ucp_group_h "UCP group".
+ * @param [out] group_p    A pointer to the group object allocated by the
+ *                         UCP library
+ *
+ * @return Error code as defined by @ref ucs_status_t
+ */
+ucs_status_t ucp_coll_group_create(ucp_worker_h worker,
+                                   const ucp_group_create_params_t *params,
+                                   ucp_group_h *group_p);
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Destroy a group object.
+ *
+ * This routine releases the resources associated with a
+ * @ref ucp_coll_group_h "UCP group".
+ *
+ * @warning Once the UCP group destroy the group handle cannot be used with any
+ * UCP routine.
+ *
+ * The destroy process releases and shuts down all resources associated    with
+ * the @ref ucp_group_h "group".
+ *
+ * @param [in]  group        Group object to destroy.
+ */
+void ucp_coll_group_destroy(ucp_group_h group);
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Runs a collective operation on a group object.
+ *
+ * @param [in]  group        Group object to use.
+ * @param [in]  params       Collective operation parameters.
+ *
+ */
+ucs_status_t ucp_coll_op_create(ucp_group_h group,
+                                ucp_group_collective_params_t *params,
+                                ucp_coll_h *coll);
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Runs a collective operation on a group object.
+ *
+ * @param [in]  group        Group object to use.
+ * @param [in]  params       Collective operation parameters.
+ *
+ */
+ucs_status_ptr_t ucp_coll_op_start(ucp_coll_h coll);
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Runs a collective operation on a group object.
+ *
+ * @param [in]  group        Group object to use.
+ * @param [in]  params       Collective operation parameters.
+ *
+ */
+void ucp_coll_op_destroy(ucp_coll_h coll);
 
 
 /**
