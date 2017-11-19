@@ -13,6 +13,7 @@
 #include <ucs/algorithm/crc.h>
 #include <ucs/datastruct/mpool.inl>
 #include <ucs/datastruct/queue.h>
+#include <ucs/debug/tune.h>
 #include <ucs/debug/log.h>
 #include <ucs/sys/compiler.h>
 #include <ucs/sys/string.h>
@@ -38,7 +39,7 @@ static const char * ucp_device_type_names[] = {
     [UCT_DEVICE_TYPE_SELF] = "loopback",
 };
 
-static ucs_config_field_t ucp_config_table[] = {
+ucs_config_field_t ucp_config_table[] = {
   {"NET_DEVICES", UCP_RSC_CONFIG_ALL,
    "Specifies which network device(s) to use. The order is not meaningful.\n"
    "\"all\" would use all available devices.",
@@ -907,6 +908,14 @@ ucs_status_t ucp_init_version(unsigned api_major_version, unsigned api_minor_ver
         goto err_free_resources;
     }
 
+#if ENABLE_TUNING
+    pthread_mutex_lock(&ucs_context_list_lock);
+    ucs_list_insert_after(&ucs_context_list, &context->tune_contexts);
+    ucs_list_head_init(&context->tune_workers);
+    pthread_mutex_unlock(&ucs_context_list_lock);
+    ucs_tune_init();
+#endif
+
     ucs_debug("created ucp context %p [%d mds %d tls] features 0x%lx", context,
               context->num_mds, context->num_tls, context->config.features);
 
@@ -925,6 +934,9 @@ err:
 
 void ucp_cleanup(ucp_context_h context)
 {
+#if ENABLE_TUNING
+    ucs_tune_cleanup();
+#endif
     ucp_tag_match_cleanup(&context->tm);
     ucp_free_resources(context);
     ucp_free_config(context);

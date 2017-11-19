@@ -171,6 +171,9 @@ typedef struct ucp_worker {
     ucs_mpool_t                   am_mp;         /* Memory pool for AM receives */
     ucs_mpool_t                   reg_mp;        /* Registered memory pool */
     ucp_mt_lock_t                 mt_lock;       /* Configuration of multi-threading support */
+#if ENABLE_TUNING
+    ucs_list_link_t               tune_list;     /* For run-time tuning, keep a list of all the instances */
+#endif
 
     UCS_STATS_NODE_DECLARE(stats);
     UCS_STATS_NODE_DECLARE(tm_offload_stats);

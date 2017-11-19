@@ -227,7 +227,7 @@ typedef struct ucp_ep {
 
     UCS_STATS_NODE_DECLARE(stats);
 
-#if ENABLE_DEBUG_DATA
+#if (ENABLE_DEBUG_DATA || ENABLE_TUNING)
     char                          peer_name[UCP_WORKER_NAME_MAX];
 #endif
 
@@ -238,6 +238,12 @@ typedef struct ucp_ep {
     struct {
         ucp_ep_ext_stream_t       *stream;      /* UCP_FEATURE_STREAM */
     } ext;
+
+#if ENABLE_TUNING
+    /* For run-time tuning, keep a list of all the instances */
+    ucs_list_link_t               tune_list;
+#endif
+
 } ucp_ep_t;
 
 

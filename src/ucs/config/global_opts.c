@@ -49,7 +49,7 @@ static UCS_CONFIG_DEFINE_ARRAY(signo,
                                sizeof(int),
                                UCS_CONFIG_TYPE_SIGNO);
 
-static ucs_config_field_t ucs_global_opts_table[] = {
+ucs_config_field_t ucs_global_opts_table[] = {
  {"LOG_LEVEL", "warn",
   "UCS logging level. Messages with a level higher or equal to the selected "
   "will be printed.\n"
@@ -185,6 +185,13 @@ static ucs_config_field_t ucs_global_opts_table[] = {
   {"PROFILE_LOG_SIZE", "4m",
    "Maximal size of profiling log. New records will replace old records.",
    ucs_offsetof(ucs_global_opts_t, profile_log_size), UCS_CONFIG_TYPE_MEMUNITS},
+#endif
+
+#if ENABLE_TUNING
+   {"TUNING_PATH", "",
+    "Named pipe path to be used for tuning parameters in run-time.\n"
+    "Substitutions: %h: host, %p: pid, %c: cpu, %t: time, %u: user, %e: exe.\n",
+    ucs_offsetof(ucs_global_opts_t, tuning_path), UCS_CONFIG_TYPE_STRING},
 #endif
 
  {NULL}

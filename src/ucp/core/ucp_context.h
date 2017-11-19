@@ -159,6 +159,12 @@ typedef struct ucp_context {
     /* All configurations about multithreading support */
     ucp_mt_lock_t                 mt_lock;
 
+#if ENABLE_TUNING
+    /* For run-time tuning, keep a list of all the instances */
+    ucs_list_link_t               tune_contexts;
+    ucs_list_link_t               tune_workers;
+#endif
+
 } ucp_context_t;
 
 
