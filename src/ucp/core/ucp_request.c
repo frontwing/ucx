@@ -283,9 +283,9 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
             goto err;
         }
         for (iov_it = 0; iov_it < iovcnt; ++iov_it) {
-            size_t iov_len = ucp_dt_extent(iov->dt, iov->count, NULL, NULL);
+            size_t iov_len = ucp_dt_extent(iov[iov_it].dt, iov[iov_it].count, NULL, NULL);
             if (iov_len) {
-                status = uct_md_mem_reg(uct_md, iov->buffer, iov_len, 0,
+                status = uct_md_mem_reg(uct_md, iov[iov_it].buffer, iov_len, 0,
                                         &memh[iov_it]);
                 if (status != UCS_OK) {
                     /* unregister previously registered memory */

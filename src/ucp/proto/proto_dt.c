@@ -149,18 +149,10 @@ ucs_status_t ucp_dt_reusable_create(uct_ep_h ep, void *buffer, size_t length,
     size_t uct_iovcnt = 0;
     size_t length_it = 0;
 
-    dt_ex->reusable.nc_iov = ucs_malloc(sizeof(uct_iov_t) * uct_iovcnt, "reusable_iov");
-    if (!dt_ex->reusable.nc_iov) {
-        return UCS_ERR_NO_MEMORY;
-    }
-
     switch (datatype & UCP_DATATYPE_CLASS_MASK) {
     case UCP_DATATYPE_STRIDE_R:
         uct_iovcnt = ucp_dt_count_uct_iov(datatype, 1, buffer, NULL); // TODO: "half-state"?
-        dt_ex->reusable.length = ucp_dt_stride_copy_uct(dt_ex->reusable.nc_iov,
-                &dt_ex->reusable.nc_iovcnt, uct_iovcnt, state, buffer, datatype, length);
         break;
-
     case UCP_DATATYPE_IOV_R:
         iov_it = buffer;
         while (length_it < length) {
@@ -168,9 +160,6 @@ ucs_status_t ucp_dt_reusable_create(uct_ep_h ep, void *buffer, size_t length,
             uct_iovcnt += ucp_dt_count_uct_iov(iov_it->dt, iov_it->count, iov_it->buffer, NULL);
             iov_it++;
         }
-
-        dt_ex->reusable.length = ucp_dt_iov_copy_uct(dt_ex->reusable.nc_iov,
-                &dt_ex->reusable.nc_iovcnt, uct_iovcnt, state, buffer, datatype, length);
         break;
 
     default:
@@ -178,6 +167,13 @@ ucs_status_t ucp_dt_reusable_create(uct_ep_h ep, void *buffer, size_t length,
         ucs_free(dt_ex->reusable.nc_iov);
         return UCS_ERR_INVALID_PARAM;
     }
+
+    dt_ex->reusable.nc_iov = ucs_malloc(sizeof(uct_iov_t) * uct_iovcnt, "reusable_iov");
+    if (!dt_ex->reusable.nc_iov) {
+        return UCS_ERR_NO_MEMORY;
+    }
+    dt_ex->reusable.length = ucp_dt_iov_copy_uct(dt_ex->reusable.nc_iov,
+            &dt_ex->reusable.nc_iovcnt, uct_iovcnt, state, buffer, datatype, length);
 
     dt_ex->reusable.nc_comp.func = ucp_dt_reusable_completion;
     return uct_ep_mem_reg_nc(ep, dt_ex->reusable.nc_iov, dt_ex->reusable.nc_iovcnt,
