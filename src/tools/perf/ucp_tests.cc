@@ -63,7 +63,8 @@ public:
             if (UCP_PERF_DATATYPE_IOV == datatype) {
                 *buffer_p = iov;
                 *length   = m_perf.params.msg_size_cnt;
-                type      = ucp_dt_make_iov();
+                /* WARNING: debugging code, test iov reusable code */
+                type      = ucp_dt_make_iov_reusable();
             }
         }
         return type;
@@ -122,6 +123,16 @@ public:
                 request = ucp_tag_send_sync_nb(ep, buffer, length, datatype, TAG,
                                                (ucp_send_callback_t)ucs_empty_function);
             } else {
+                /* WARNING: debug code */
+                static int wired_up = false;
+                if(!wired_up) {
+                    int tmp;
+                    /* send the first empty message to wireup the connection */
+                    request = ucp_tag_send_nb(ep, &tmp, sizeof(tmp), ucp_dt_make_contig(1), TAG + 1,
+                                              (ucp_send_callback_t)ucs_empty_function);
+                    wait(request, true);
+                }
+                /* normal send flow */
                 request = ucp_tag_send_nb(ep, buffer, length, datatype, TAG,
                                           (ucp_send_callback_t)ucs_empty_function);
             }
@@ -177,10 +188,22 @@ public:
 
         /* coverity[switch_selector_expr_is_constant] */
         switch (CMD) {
-        case UCX_PERF_CMD_TAG:
+        case UCX_PERF_CMD_TAG: {
+            /* WARNING: debugging code! */
+            static bool wired_up = false;
+            if(!wired_up) {
+                int tmp;
+                /* send the first empty message to wireup the connection */
+                request = ucp_tag_recv_nb(worker, &tmp, sizeof(tmp), ucp_dt_make_contig(1), TAG + 1, TAG_MASK,
+                                          (ucp_tag_recv_callback_t)ucs_empty_function);
+                wait(request, true);
+            }
+
+            /* normal message receive flow */
             request = ucp_tag_recv_nb(worker, buffer, length, datatype, TAG, TAG_MASK,
                                       (ucp_tag_recv_callback_t)ucs_empty_function);
             return wait(request, false);
+        }
         case UCX_PERF_CMD_PUT:
             /* coverity[switch_selector_expr_is_constant] */
             switch (TYPE) {
