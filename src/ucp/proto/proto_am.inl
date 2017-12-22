@@ -92,7 +92,7 @@ err:
 static UCS_F_ALWAYS_INLINE
 size_t ucp_dt_copy_uct(uct_iov_t *iov, size_t *iovcnt, size_t max_dst_iov,
                        ucp_dt_state_t *state, const ucp_dt_iov_t *src_iov,
-                       ucp_datatype_t datatype, size_t length_max)
+                       ucp_datatype_t datatype, size_t length_max, uct_ep_h ep)
 {
     size_t length_it = 0;
 
@@ -114,7 +114,18 @@ size_t ucp_dt_copy_uct(uct_iov_t *iov, size_t *iovcnt, size_t max_dst_iov,
                                            src_iov, datatype, length_max);
         break;
         
-    case UCP_DATATYPE_IOV_R:
+    case UCP_DATATYPE_IOV_R:{
+        ucp_dt_extended_t *dt_ex = ucp_dt_ptr(datatype);
+        iov[0].buffer = (void *)src_iov[0].buffer + state->offset;
+        length_it = dt_ex->reusable.length - state->offset;
+        length_it = (length_it < length_max) ? length_it : length_max;
+        iov[0].length = length_it;
+        iov[0].memh   = state->dt.iov.contig_memh;
+        iov[0].stride = 0;
+        iov[0].count  = 1;
+        *iovcnt   = 1;
+        break;
+    }
     case UCP_DATATYPE_IOV:
         length_it = ucp_dt_iov_copy_uct(iov, iovcnt, max_dst_iov, state,
                                         src_iov, datatype, length_max);
@@ -143,7 +154,7 @@ ucs_status_t ucp_do_am_zcopy_single(uct_pending_req_t *self, uint8_t am_id,
     req->send.lane = ucp_ep_get_am_lane(ep);
 
     ucp_dt_copy_uct(iov, &iovcnt, max_iov, &req->send.state, req->send.buffer,
-                    req->send.datatype, req->send.length);
+                    req->send.datatype, req->send.length, ep->uct_eps[req->send.lane]);
 
     status = uct_ep_am_zcopy(ep->uct_eps[req->send.lane], am_id, (void*)hdr,
                              hdr_size, iov, iovcnt, &req->send.uct_comp);
@@ -195,7 +206,8 @@ ucs_status_t ucp_do_am_zcopy_multi(uct_pending_req_t *self, uint8_t am_id_first,
         /* First stage */
         length_it = ucp_dt_copy_uct(iov, &iovcnt, max_iov, state,
                                     req->send.buffer,  req->send.datatype,
-                                    max_middle - hdr_size_first + hdr_size_middle);
+                                    max_middle - hdr_size_first + hdr_size_middle,
+                                    uct_ep);
 
         status = uct_ep_am_zcopy(uct_ep, am_id_first, (void*)hdr_first,
                                  hdr_size_first, iov, iovcnt, &req->send.uct_comp);
@@ -210,7 +222,8 @@ ucs_status_t ucp_do_am_zcopy_multi(uct_pending_req_t *self, uint8_t am_id_first,
     } else if ((offset + max_middle < req->send.length) || flag_iov_mid) {
         /* Middle stage */
         length_it = ucp_dt_copy_uct(iov, &iovcnt, max_iov, state,
-                                    req->send.buffer, req->send.datatype, max_middle);
+                                    req->send.buffer, req->send.datatype, max_middle,
+                                    uct_ep);
 
         status = uct_ep_am_zcopy(uct_ep, am_id_middle, (void*)hdr_middle,
                                  hdr_size_middle, iov, iovcnt, &req->send.uct_comp);
@@ -226,7 +239,8 @@ ucs_status_t ucp_do_am_zcopy_multi(uct_pending_req_t *self, uint8_t am_id_first,
         /* Last stage */
         length_it = ucp_dt_copy_uct(iov, &iovcnt, max_iov, state,
                                     req->send.buffer, req->send.datatype,
-                                    req->send.length - offset);
+                                    req->send.length - offset,
+                                    uct_ep);
 
         status = uct_ep_am_zcopy(uct_ep, am_id_last, (void*)hdr_middle,
                                  hdr_size_middle, iov, iovcnt, &req->send.uct_comp);

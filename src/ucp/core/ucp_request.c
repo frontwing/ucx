@@ -260,17 +260,14 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
     case UCP_DATATYPE_IOV_R:
         /* If this is not the first time - just update the pointers and GO */
         reusable = UCP_DT_GET_REUSABLE(datatype);
-        if (reusable->stride_memh != UCT_MEM_HANDLE_NULL) {
+        if (reusable->nc_memh != UCT_MEM_HANDLE_NULL) {
             if (ucs_unlikely(reusable->nc_status != UCS_OK)) {
                 return status;
             }
 
             uct_md_attr = &context->tl_mds[mdi].attr;
-            if (uct_md_attr->cap.flags & UCT_MD_FLAG_REG_NC) {
-                status = ucp_dt_reusable_update(ep, buffer, length, datatype, state);
-                state->dt.iov.contig_memh = reusable->nc_memh;
-            }
-            state->dt.iov.memh = reusable->stride_memh;
+            state->dt.iov.contig_memh = reusable->nc_memh;
+            state->dt.iov.memh = reusable->iov_memh;
             break;
         }
 

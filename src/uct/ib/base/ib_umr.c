@@ -4,6 +4,7 @@
  * See file LICENSE for terms.
  */
 
+#include "config.h"
 #include "ib_umr.h"
 
 #define MAX_UMR_REPEAT_COUNT  ((uint32_t)-1)
@@ -468,6 +469,13 @@ ucs_status_t uct_ib_umr_reg_nc(uct_md_h uct_md, const uct_iov_t *iov,
 #if (HAVE_EXP_UMR || HAVE_EXP_UMR_NEW_API)
     uct_ib_umr_t *umr;
     ucs_status_t status;
+    int i;
+    size_t length;
+
+    length = 0;
+    for(i=0;i<iovcnt;i++) {
+        length += iov[i].length;
+    }
 
     uct_ib_md_t *md = ucs_derived_of(uct_md, uct_ib_md_t);
     if (ucs_unlikely(md->umr.qp == NULL)) {
@@ -481,6 +489,8 @@ ucs_status_t uct_ib_umr_reg_nc(uct_md_h uct_md, const uct_iov_t *iov,
             return status;
         }
 
+        umr->mr->addr = iov[0].buffer;
+        umr->mr->length = length;
         memh->mr        = umr->mr;
         memh->umr       = umr;
         memh->lkey      = umr->mr->lkey;
@@ -490,6 +500,9 @@ ucs_status_t uct_ib_umr_reg_nc(uct_md_h uct_md, const uct_iov_t *iov,
         return UCS_OK;
     }
 
+    umr = memh->umr;
+    umr->mr->addr = iov[0].buffer;
+    umr->mr->length = length;
     *wr_p = &memh->umr->wr;
     return uct_ib_umr_update_wr(iov, iovcnt, memh->umr);
 #else
