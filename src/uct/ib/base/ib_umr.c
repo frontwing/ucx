@@ -95,13 +95,8 @@ ucs_status_t uct_ib_umr_fill_wr(uct_ib_md_t *md, const uct_iov_t *iov,
     struct ibv_mr *ib_mr;
     size_t cycle_length;
 
-    if (!umr->is_inline) {
-        return UCS_ERR_UNSUPPORTED; // TODO: support...
-    }
-
     umr->wr.exp_opcode             = IBV_EXP_WR_UMR_FILL;
-    umr->wr.exp_send_flags         = IBV_EXP_SEND_INLINE |
-                                     IBV_EXP_SEND_SIGNALED;
+    umr->wr.exp_send_flags         = IBV_EXP_SEND_SIGNALED;
     umr->wr.ext_op.umr.exp_access  = UCT_IB_UMR_ACCESS_FLAGS;
     umr->wr.ext_op.umr.modified_mr = umr->mr;
     umr->wr.ext_op.umr.base_addr   = (uint64_t) entry->buffer;
@@ -174,6 +169,22 @@ ucs_status_t uct_ib_umr_fill_wr(uct_ib_md_t *md, const uct_iov_t *iov,
     }
 
     umr->wr.ext_op.umr.num_mrs = mem_idx;
+
+    if (umr->is_inline) {
+        umr->wr.exp_send_flags |= IBV_EXP_SEND_INLINE;
+    } else {
+        struct ibv_exp_mkey_list_container_attr cin;
+        memset(&cin, 0, sizeof(cin));
+        cin.pd = umr->mr->pd;
+        cin.mkey_list_type = IBV_EXP_MKEY_LIST_TYPE_INDIRECT_MR;
+        cin.max_klm_list_size = umr->wr.ext_op.umr.num_mrs;
+        umr->wr.ext_op.umr.memory_objects = ibv_exp_alloc_mkey_list_memory(&cin);
+        if (!umr->wr.ext_op.umr.memory_objects) {
+            return UCS_ERR_UNSUPPORTED;
+        }
+    }
+
+
     return UCS_OK;
 }
 
