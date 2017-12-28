@@ -65,6 +65,16 @@ public:
                 *length   = m_perf.params.msg_size_cnt;
                 /* WARNING: debugging code, test iov reusable code */
                 type      = ucp_dt_make_iov_reusable();
+            } else if (UCP_PERF_DATATYPE_STRIDE == datatype) {
+                /* WARNING: debugging code, test stride reusable code */
+                /* keep length and buffer ptr as is for now
+                 * buffer_p = iov;
+                 *
+                 */
+                *length   = 1;
+                type = ucp_dt_make_stride_reusable(ucp_dt_make_contig(m_perf.params.msg_size_list[0]),
+                                                   m_perf.params.iov_stride,
+                                                   m_perf.params.msg_size_cnt);
             }
         }
         return type;

@@ -326,6 +326,7 @@ static void usage(struct perftest_context *ctx, const char *program)
     printf("                                 zcopy : Use zero-copy API (cannot used for atomics).\n");
     printf("                                contig : Use continuous datatype in UCP tests.\n");
     printf("                                   iov : Use IOV datatype in UCP tests.\n");
+    printf("                                   stride : Use Strided datatype in UCP tests.\n");
     printf("\n");
     printf("     -d <device>    Device to use for testing.\n");
     printf("     -x <tl>        Transport to use for testing.\n");
@@ -386,11 +387,15 @@ static ucs_status_t parse_ucp_datatype_params(const char *optarg,
     const size_t iov_type_size    = strlen("iov");
     const char  *contig_type      = "contig";
     const size_t contig_type_size = strlen("contig");
+    const char  *stride_type      = "stride";
+    const size_t stride_type_size = strlen("stride");
 
     if (0 == strncmp(optarg, iov_type, iov_type_size)) {
         *datatype = UCP_PERF_DATATYPE_IOV;
     } else if (0 == strncmp(optarg, contig_type, contig_type_size)) {
         *datatype = UCP_PERF_DATATYPE_CONTIG;
+    } else if (0 == strncmp(optarg, stride_type, stride_type_size)) {
+        *datatype = UCP_PERF_DATATYPE_STRIDE;
     } else {
         return UCS_ERR_INVALID_PARAM;
     }
