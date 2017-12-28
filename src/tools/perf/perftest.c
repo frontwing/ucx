@@ -592,7 +592,7 @@ static ucs_status_t read_batch_file(FILE *batch_file, ucx_perf_params_t *params,
                                     char** test_name_p)
 {
 #define MAX_SIZE 256
-#define MAX_ARG_SIZE 2048
+#define MAX_ARG_SIZE (10*1048)
     ucs_status_t status;
     char buf[MAX_ARG_SIZE];
     int argc;
