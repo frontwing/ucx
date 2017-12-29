@@ -131,19 +131,17 @@ ucs_status_t uct_ib_umr_fill_wr(uct_ib_md_t *md, const uct_iov_t *iov,
                 umr->mem_strided[mem_idx].stride     = &umr->repeat_stride[dim_idx];
                 umr->mem_strided[mem_idx].byte_count = &umr->repeat_length[dim_idx];
 
-                do {
-                    if ((entry->length > MAX_UMR_REPEAT_STRIDE) ||
+                if ((entry->length > MAX_UMR_REPEAT_STRIDE) ||
                         (entry->stride > MAX_UMR_REPEAT_LENGTH)) {
-                        return UCS_ERR_UNSUPPORTED;
-                    }
+                    return UCS_ERR_UNSUPPORTED;
+                }
 
-                    umr->repeat_length[dim_idx] = entry->length;
-                    umr->repeat_stride[dim_idx] = entry->stride;
-                    cycle_length += entry->length;
-                    dim_idx++;
+                umr->repeat_length[dim_idx] = entry->length;
+                umr->repeat_stride[dim_idx] = entry->stride;
+                cycle_length += entry->length;
+                dim_idx++;
 
-                    entry = &iov[++entry_idx];
-                } while (entry->buffer == NULL);
+                entry = &iov[++entry_idx];
                 mem_idx++;
             }
         }
@@ -485,7 +483,11 @@ ucs_status_t uct_ib_umr_reg_nc(uct_md_h uct_md, const uct_iov_t *iov,
 
     length = 0;
     for(i=0;i<iovcnt;i++) {
-        length += iov[i].length;
+        if( !iov[i].stride ) {
+            length += iov[i].length;
+        } else {
+            length += iov[i].length * iov[i].count;
+        }
     }
 
     uct_ib_md_t *md = ucs_derived_of(uct_md, uct_ib_md_t);

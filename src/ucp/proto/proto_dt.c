@@ -145,13 +145,29 @@ ucs_status_t ucp_dt_reusable_create(uct_ep_h ep, void *buffer, size_t length,
                                     ucp_datatype_t datatype, ucp_dt_state_t *state)
 {
     ucp_dt_extended_t *dt_ex = ucp_dt_ptr(datatype);
+    ucp_dt_stride_t *stride = &ucp_dt_ptr(datatype)->stride;
     const ucp_dt_iov_t *iov_it;
     size_t uct_iovcnt = 0;
     size_t length_it = 0;
 
     switch (datatype & UCP_DATATYPE_CLASS_MASK) {
     case UCP_DATATYPE_STRIDE_R:
-        uct_iovcnt = ucp_dt_count_uct_iov(datatype, 1, buffer, NULL); // TODO: "half-state"?
+        /* For now - assume a simple 1-dimentional stride
+            uct_iovcnt = ucp_dt_count_uct_iov(datatype, 1, buffer, NULL); // TODO: "half-state"?
+        */
+        uct_iovcnt = 1;
+        dt_ex->reusable.nc_iov = ucs_malloc(sizeof(uct_iov_t) * 1, "reusable_iov");
+        if (!dt_ex->reusable.nc_iov) {
+            return UCS_ERR_NO_MEMORY;
+        }
+        dt_ex->reusable.length = stride->total_length;
+        dt_ex->reusable.nc_iov[0].buffer = buffer;
+        dt_ex->reusable.nc_iov[0].stride = stride->dims[0].extent;
+        dt_ex->reusable.nc_iov[0].count =  stride->dims[0].count;
+        dt_ex->reusable.nc_iov[0].length = stride->item_length;
+        dt_ex->reusable.nc_iov[0].memh = state->dt.stride.memh;
+        dt_ex->reusable.nc_iov[0].ilv_ratio = 1;
+        dt_ex->reusable.nc_iovcnt = uct_iovcnt;
         break;
     case UCP_DATATYPE_IOV_R:
         iov_it = buffer;
@@ -160,6 +176,12 @@ ucs_status_t ucp_dt_reusable_create(uct_ep_h ep, void *buffer, size_t length,
             uct_iovcnt += ucp_dt_count_uct_iov(iov_it->dt, iov_it->count, iov_it->buffer, NULL);
             iov_it++;
         }
+        dt_ex->reusable.nc_iov = ucs_malloc(sizeof(uct_iov_t) * uct_iovcnt, "reusable_iov");
+        if (!dt_ex->reusable.nc_iov) {
+            return UCS_ERR_NO_MEMORY;
+        }
+        dt_ex->reusable.length = ucp_dt_iov_copy_uct(dt_ex->reusable.nc_iov,
+                &dt_ex->reusable.nc_iovcnt, uct_iovcnt, state, buffer, datatype, length);
         break;
 
     default:
@@ -167,13 +189,6 @@ ucs_status_t ucp_dt_reusable_create(uct_ep_h ep, void *buffer, size_t length,
         ucs_free(dt_ex->reusable.nc_iov);
         return UCS_ERR_INVALID_PARAM;
     }
-
-    dt_ex->reusable.nc_iov = ucs_malloc(sizeof(uct_iov_t) * uct_iovcnt, "reusable_iov");
-    if (!dt_ex->reusable.nc_iov) {
-        return UCS_ERR_NO_MEMORY;
-    }
-    dt_ex->reusable.length = ucp_dt_iov_copy_uct(dt_ex->reusable.nc_iov,
-            &dt_ex->reusable.nc_iovcnt, uct_iovcnt, state, buffer, datatype, length);
 
     dt_ex->reusable.nc_comp.func = ucp_dt_reusable_completion;
     return uct_ep_mem_reg_nc(ep, dt_ex->reusable.nc_iov, dt_ex->reusable.nc_iovcnt,

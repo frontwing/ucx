@@ -108,19 +108,25 @@ size_t ucp_dt_copy_uct(uct_iov_t *iov, size_t *iovcnt, size_t max_dst_iov,
         length_it = iov[0].length;
         break;
         
-    case UCP_DATATYPE_STRIDE_R:
+
     case UCP_DATATYPE_STRIDE:
         length_it = ucp_dt_stride_copy_uct(iov, iovcnt, max_dst_iov, state,
                                            src_iov, datatype, length_max);
         break;
-        
+    case UCP_DATATYPE_STRIDE_R:
     case UCP_DATATYPE_IOV_R:{
         ucp_dt_extended_t *dt_ex = ucp_dt_ptr(datatype);
-        iov[0].buffer = (void *)src_iov[0].buffer + state->offset;
+        if ( (datatype & UCP_DATATYPE_CLASS_MASK) == UCP_DATATYPE_STRIDE_R) {
+            iov[0].memh   = state->dt.stride.contig_memh;
+            iov[0].buffer = (void *)src_iov + state->offset;
+        } else {
+            /* iov */
+            iov[0].memh   = state->dt.iov.contig_memh;
+            iov[0].buffer = (void *)src_iov[0].buffer + state->offset;
+        }
         length_it = dt_ex->reusable.length - state->offset;
         length_it = (length_it < length_max) ? length_it : length_max;
         iov[0].length = length_it;
-        iov[0].memh   = state->dt.iov.contig_memh;
         iov[0].stride = 0;
         iov[0].count  = 1;
         *iovcnt   = 1;
