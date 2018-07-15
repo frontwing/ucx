@@ -8,6 +8,7 @@
 #include "ucp_context.h"
 #include "ucp_worker.h"
 
+#include <ucp/dt/dt.h>
 #include <ucs/debug/log.h>
 #include <ucs/debug/memtrack.h>
 #include <ucs/sys/math.h>
@@ -38,6 +39,7 @@ ucs_status_t ucp_mem_rereg_mds(ucp_context_h context, ucp_md_map_t reg_md_map,
     unsigned md_index;
     ucs_status_t status;
     int level;
+    ucp_dt_reg_t *prereg = (uct_flags & UCT_MD_MEM_FLAG_MEM_PROF) ? address : NULL;
 
     if (reg_md_map == *md_map_p) {
         return UCS_OK; /* shortcut - no changes required */
@@ -87,11 +89,17 @@ ucs_status_t ucp_mem_rereg_mds(ucp_context_h context, ucp_md_map_t reg_md_map,
     ucs_for_each_bit(md_index, reg_md_map) {
         if (*md_map_p & UCS_BIT(md_index)) {
             /* already registered, use previous memh */
+            if (prereg) {
+                prereg->memh[md_index] = prev_uct_memh[prev_memh_index];
+            }
             uct_memh[memh_index++] = prev_uct_memh[prev_memh_index++];
             new_md_map            |= UCS_BIT(md_index);
         } else if (context->tl_mds[md_index].md == alloc_md) {
             /* already allocated, add the memh we got from allocation */
             ucs_assert(alloc_md_memh_p != NULL);
+            if (prereg) {
+                prereg->memh[md_index] = *alloc_md_memh_p;
+            }
             uct_memh[memh_index++] = *alloc_md_memh_p;
             new_md_map            |= UCS_BIT(md_index);
         } else if ((context->tl_mds[md_index].attr.cap.flags & UCT_MD_FLAG_REG) &&
@@ -114,6 +122,9 @@ ucs_status_t ucp_mem_rereg_mds(ucp_context_h context, ucp_md_map_t reg_md_map,
             ucs_trace("registered address %p length %zu on md[%d] memh[%d]=%p",
                       address, length, md_index, memh_index,
                       uct_memh[memh_index]);
+            if (prereg) {
+                prereg->memh[md_index] = uct_memh[memh_index];
+            }
             new_md_map |= UCS_BIT(md_index);
             ++memh_index;
         }
@@ -122,6 +133,9 @@ ucs_status_t ucp_mem_rereg_mds(ucp_context_h context, ucp_md_map_t reg_md_map,
     /* Update md_map, note that MDs which did not support registration will be
      * missing from the map.*/
     *md_map_p = new_md_map;
+    if (prereg) {
+        prereg->md_map = new_md_map;
+    }
     return UCS_OK;
 }
 
@@ -215,6 +229,10 @@ ucp_mem_map_params2uct_flags(ucp_mem_map_params_t *params)
         if (params->flags & UCP_MEM_MAP_FIXED) {
             flags |= UCT_MD_MEM_FLAG_FIXED;
         }
+
+        if (params->flags & UCP_MEM_MAP_MEM_PROF) {
+            flags |= UCT_MD_MEM_FLAG_MEM_PROF;
+        }
     }
 
     flags |= UCT_MD_MEM_ACCESS_ALL;
@@ -241,6 +259,11 @@ static inline ucs_status_t ucp_mem_map_check_and_adjust_params(ucp_mem_map_param
         ucs_error("The length value for mapping memory isn't set: %s",
                   ucs_status_string(UCS_ERR_INVALID_PARAM));
         return UCS_ERR_INVALID_PARAM;
+    }
+
+    if ((params->flags & UCP_MEM_MAP_MEM_PROF) &&
+        (params->length < sizeof(ucp_dt_reg_t))) {
+        return UCS_ERR_NO_MEMORY;
     }
 
     /* First of all, define all fields */

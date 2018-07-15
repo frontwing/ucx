@@ -200,8 +200,6 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
                  size_t length, ucp_datatype_t datatype, ucp_dt_state_t *state,
                  uct_memory_type_t mem_type, ucp_request_t *req_dbg, unsigned uct_flags)
 {
-    int md_it, memh_it;
-    ucp_mem_h user_memh;
     size_t iov_it, iovcnt;
     const ucp_dt_iov_t *iov;
     ucp_dt_reg_t *dt_reg;
@@ -224,16 +222,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
                       state->dt.contig.md_map, md_map);
         break;
     case UCP_DATATYPE_PREREG:
-        md_it = 0;
-        memh_it = 0;
-        user_memh = *(ucp_mem_h*)buffer;
-        while (state->dt.contig.md_map != user_memh->md_map) {
-            if (user_memh->md_map & UCS_BIT(md_it)) {
-                state->dt.contig.md_map |= UCS_BIT(md_it);
-                state->dt.contig.memh[md_it] = user_memh->uct[memh_it++];
-            }
-            md_it++;
-        }
+        state->dt.prereg = buffer;
         break;
     case UCP_DATATYPE_IOV:
         iovcnt = state->dt.iov.iovcnt;

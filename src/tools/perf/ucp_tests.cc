@@ -55,7 +55,7 @@ public:
     }
 
     ucp_datatype_t ucp_perf_test_get_datatype(ucp_perf_datatype_t datatype, ucp_dt_iov_t *iov,
-                                              size_t *length, void **buffer_p, ucp_mem_h memh)
+                                              size_t *length, void **buffer_p)
     {
         ucp_datatype_t type;
         switch (datatype) {
@@ -65,7 +65,6 @@ public:
             break;
         case UCP_PERF_DATATYPE_PREREG:
             type = ucp_dt_make_prereg(1);
-            **(ucp_mem_h**)buffer_p = memh;
             break;
         case UCP_PERF_DATATYPE_IOV:
             *buffer_p = iov;
@@ -326,10 +325,10 @@ public:
         recv_length   = length;
         send_datatype = ucp_perf_test_get_datatype(m_perf.params.ucp.send_datatype,
                                                    m_perf.ucp.send_iov, &send_length,
-                                                   &send_buffer, m_perf.ucp.send_memh);
+                                                   &send_buffer);
         recv_datatype = ucp_perf_test_get_datatype(m_perf.params.ucp.recv_datatype,
                                                    m_perf.ucp.recv_iov, &recv_length,
-                                                   &recv_buffer, m_perf.ucp.recv_memh);
+                                                   &recv_buffer);
 
         if (my_index == 0) {
             UCX_PERF_TEST_FOREACH(&m_perf) {
@@ -387,10 +386,10 @@ public:
         recv_length   = length;
         send_datatype = ucp_perf_test_get_datatype(m_perf.params.ucp.send_datatype,
                                                    m_perf.ucp.send_iov, &send_length,
-                                                   &send_buffer, m_perf.ucp.send_memh);
+                                                   &send_buffer);
         recv_datatype = ucp_perf_test_get_datatype(m_perf.params.ucp.recv_datatype,
                                                    m_perf.ucp.recv_iov, &recv_length,
-                                                   &recv_buffer, m_perf.ucp.recv_memh);
+                                                   &recv_buffer);
 
         if (my_index == 0) {
             UCX_PERF_TEST_FOREACH(&m_perf) {

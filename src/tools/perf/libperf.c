@@ -865,7 +865,7 @@ ucp_perf_test_alloc_host(ucx_perf_context_t *perf, ucx_perf_params_t *params,
                                 UCP_MEM_MAP_PARAM_FIELD_FLAGS;
     mem_map_params.address    = *addr;
     mem_map_params.length     = length;
-    mem_map_params.flags      = UCP_MEM_MAP_ALLOCATE;
+    mem_map_params.flags      = UCP_MEM_MAP_ALLOCATE | UCP_MEM_MAP_MEM_PROF;
     if (check_non_blk_flag) {
         mem_map_params.flags  |= (params->flags & UCX_PERF_TEST_FLAG_MAP_NONBLOCK) ?
                                  UCP_MEM_MAP_NONBLOCK : 0;

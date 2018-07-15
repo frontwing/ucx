@@ -114,8 +114,26 @@ void ucp_dt_iov_copy_uct(ucp_context_h context, uct_iov_t *iov, size_t *iovcnt,
     ucp_md_index_t memh_index;
 
     switch (datatype & UCP_DATATYPE_CLASS_MASK) {
-    case UCP_DATATYPE_CONTIG:
     case UCP_DATATYPE_PREREG:
+        if (context->tl_mds[md_index].attr.cap.flags & UCT_MD_FLAG_REG) {
+            if (mdesc) {
+                printf("FAIL!\n");
+            } else {
+                memh_index  = ucp_memh_map2idx(state->dt.prereg->md_map, md_index);
+                iov[0].memh = state->dt.prereg->memh[memh_index];
+            }
+        } else {
+            iov[0].memh = UCT_MEM_HANDLE_NULL;
+        }
+        iov[0].buffer = (void *)src_iov + state->offset;
+        iov[0].length = length_max;
+        iov[0].stride = 0;
+        iov[0].count  = 1;
+
+        *iovcnt   = 1;
+        length_it = iov[0].length;
+        break;
+    case UCP_DATATYPE_CONTIG:
         if (context->tl_mds[md_index].attr.cap.flags & UCT_MD_FLAG_REG) {
             if (mdesc) {
                 memh_index  = ucp_memh_map2idx(mdesc->memh->md_map, md_index);
