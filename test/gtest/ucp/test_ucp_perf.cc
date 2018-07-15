@@ -57,6 +57,12 @@ test_perf::test_spec test_ucp_perf::tests[] =
     ucs_offsetof(ucx_perf_result_t, latency.total_average), 1e6, 0.001, 60.0,
     0 },
 
+  { "tag prereg latency", "usec",
+    UCX_PERF_API_UCP, UCX_PERF_CMD_TAG, UCX_PERF_TEST_TYPE_PINGPONG,
+    UCP_PERF_DATATYPE_PREREG, 8192, 3, { 1024, 1024, 1024 }, 1, 100000l,
+    ucs_offsetof(ucx_perf_result_t, latency.total_average), 1e6, 0.001, 60.0,
+    0 },
+
   { "tag mr", "Mpps",
     UCX_PERF_API_UCP, UCX_PERF_CMD_TAG, UCX_PERF_TEST_TYPE_STREAM_UNI,
     UCP_PERF_DATATYPE_CONTIG, 0, 1, { 8 }, 1, 2000000l,

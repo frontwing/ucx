@@ -57,6 +57,7 @@ typedef enum {
 typedef enum {
     UCP_PERF_DATATYPE_CONTIG,
     UCP_PERF_DATATYPE_IOV,
+    UCP_PERF_DATATYPE_PREREG,
 } ucp_perf_datatype_t;
 
 

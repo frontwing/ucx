@@ -55,13 +55,23 @@ public:
     }
 
     ucp_datatype_t ucp_perf_test_get_datatype(ucp_perf_datatype_t datatype, ucp_dt_iov_t *iov,
-                                              size_t *length, void **buffer_p)
+                                              size_t *length, void **buffer_p, ucp_mem_h memh)
     {
-        ucp_datatype_t type = ucp_dt_make_contig(1);
-        if (UCP_PERF_DATATYPE_IOV == datatype) {
+        ucp_datatype_t type;
+        switch (datatype) {
+        default:
+        case UCP_PERF_DATATYPE_CONTIG:
+            type = ucp_dt_make_contig(1);
+            break;
+        case UCP_PERF_DATATYPE_PREREG:
+            type = ucp_dt_make_prereg(1);
+            **(ucp_mem_h**)buffer_p = memh;
+            break;
+        case UCP_PERF_DATATYPE_IOV:
             *buffer_p = iov;
             *length   = m_perf.params.msg_size_cnt;
             type      = ucp_dt_make_iov();
+            break;
         }
         return type;
     }
@@ -316,10 +326,10 @@ public:
         recv_length   = length;
         send_datatype = ucp_perf_test_get_datatype(m_perf.params.ucp.send_datatype,
                                                    m_perf.ucp.send_iov, &send_length,
-                                                   &send_buffer);
+                                                   &send_buffer, m_perf.ucp.send_memh);
         recv_datatype = ucp_perf_test_get_datatype(m_perf.params.ucp.recv_datatype,
                                                    m_perf.ucp.recv_iov, &recv_length,
-                                                   &recv_buffer);
+                                                   &recv_buffer, m_perf.ucp.recv_memh);
 
         if (my_index == 0) {
             UCX_PERF_TEST_FOREACH(&m_perf) {
@@ -377,10 +387,10 @@ public:
         recv_length   = length;
         send_datatype = ucp_perf_test_get_datatype(m_perf.params.ucp.send_datatype,
                                                    m_perf.ucp.send_iov, &send_length,
-                                                   &send_buffer);
+                                                   &send_buffer, m_perf.ucp.send_memh);
         recv_datatype = ucp_perf_test_get_datatype(m_perf.params.ucp.recv_datatype,
                                                    m_perf.ucp.recv_iov, &recv_length,
-                                                   &recv_buffer);
+                                                   &recv_buffer, m_perf.ucp.recv_memh);
 
         if (my_index == 0) {
             UCX_PERF_TEST_FOREACH(&m_perf) {
