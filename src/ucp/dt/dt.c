@@ -102,6 +102,7 @@ size_t ucp_dt_pack(ucp_worker_h worker, ucp_datatype_t datatype,
 
     switch (datatype & UCP_DATATYPE_CLASS_MASK) {
     case UCP_DATATYPE_CONTIG:
+    case UCP_DATATYPE_PREREG:
         if (ucs_likely(UCP_MEM_IS_HOST(mem_type))) {
             UCS_PROFILE_CALL(memcpy, dest, src + state->offset, length);
         } else {

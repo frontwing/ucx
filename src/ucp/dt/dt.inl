@@ -20,6 +20,7 @@ size_t ucp_dt_length(ucp_datatype_t datatype, size_t count,
 
     switch (datatype & UCP_DATATYPE_CLASS_MASK) {
     case UCP_DATATYPE_CONTIG:
+    case UCP_DATATYPE_PREREG:
         return ucp_contig_dt_length(datatype, count);
 
     case UCP_DATATYPE_IOV:
@@ -52,6 +53,7 @@ ucp_dt_unpack_only(ucp_worker_h worker, void *buffer, size_t count,
 
     switch (datatype & UCP_DATATYPE_CLASS_MASK) {
     case UCP_DATATYPE_CONTIG:
+    case UCP_DATATYPE_PREREG:
         if (truncation &&
             ucs_unlikely(length > (buffer_size = ucp_contig_dt_length(datatype, count)))) {
             goto err_truncated;
@@ -105,6 +107,7 @@ ucp_dt_recv_state_init(ucp_dt_state_t *dt_state, void *buffer,
 
     switch (dt & UCP_DATATYPE_CLASS_MASK) {
     case UCP_DATATYPE_CONTIG:
+    case UCP_DATATYPE_PREREG:
         dt_state->dt.contig.md_map     = 0;
         break;
    case UCP_DATATYPE_IOV:

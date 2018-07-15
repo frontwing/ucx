@@ -328,6 +328,7 @@ enum ucp_dt_type {
                                         user-defined pack/unpack routines */
     UCP_DATATYPE_SHIFT   = 3,      /**< Number of bits defining
                                         the datatype classification */
+    UCP_DATATYPE_PREREG  = 4,      /**< Memory registered in advance */
     UCP_DATATYPE_CLASS_MASK = UCS_MASK(UCP_DATATYPE_SHIFT) /**< Data-type class
                                                                 mask */
 };
@@ -425,6 +426,24 @@ typedef enum {
  */
 #define ucp_dt_make_contig(_elem_size) \
     (((ucp_datatype_t)(_elem_size) << UCP_DATATYPE_SHIFT) | UCP_DATATYPE_CONTIG)
+
+
+/**
+ * @ingroup UCP_DATATYPE
+ * @brief Generate an identifier for pre-registered data type.
+ *
+ * This macro creates an identifier for pre-registered datatype that is defined by
+ * the size of the basic element.
+ *
+ * @param [in]  _elem_size    Size of the basic element of the type.
+ *
+ * @return Data-type identifier.
+ *
+ * @note In case of partial receive, the buffer will be filled with integral
+ *       count of elements.
+ */
+#define ucp_dt_make_prereg(_elem_size) \
+    (((ucp_datatype_t)(_elem_size) << UCP_DATATYPE_SHIFT) | UCP_DATATYPE_PREREG)
 
 
 /**

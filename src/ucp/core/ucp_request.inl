@@ -242,6 +242,9 @@ ucp_request_send_state_init(ucp_request_t *req, ucp_datatype_t datatype,
     case UCP_DATATYPE_CONTIG:
         req->send.state.dt.dt.contig.md_map     = 0;
         return;
+    case UCP_DATATYPE_PREREG:
+        req->send.state.dt.dt.contig.md_map     = 0;
+        return;
     case UCP_DATATYPE_IOV:
         req->send.state.dt.dt.iov.iovcnt_offset = 0;
         req->send.state.dt.dt.iov.iov_offset    = 0;
@@ -428,6 +431,7 @@ ucp_request_recv_data_unpack(ucp_request_t *req, const void *data,
 
     switch (req->recv.datatype & UCP_DATATYPE_CLASS_MASK) {
     case UCP_DATATYPE_CONTIG:
+    case UCP_DATATYPE_PREREG:
         if (ucs_likely(UCP_MEM_IS_HOST(req->recv.mem_type))) {
             UCS_PROFILE_NAMED_CALL("memcpy_recv", memcpy, req->recv.buffer + offset,
                                    data, length);

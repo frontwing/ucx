@@ -30,7 +30,8 @@ static inline size_t ucp_contig_dt_elem_size(ucp_datatype_t datatype)
 }
 
 #define UCP_DT_IS_CONTIG(_datatype) \
-          (((_datatype) & UCP_DATATYPE_CLASS_MASK) == UCP_DATATYPE_CONTIG)
+          ((((_datatype) & UCP_DATATYPE_CLASS_MASK) == UCP_DATATYPE_CONTIG) || \
+           (((_datatype) & UCP_DATATYPE_CLASS_MASK) == UCP_DATATYPE_PREREG))
 
 static inline size_t ucp_contig_dt_length(ucp_datatype_t datatype, size_t count)
 {
