@@ -6,6 +6,7 @@
 */
 
 #include "rc_verbs.h"
+#include "config.h"
 
 #include <ucs/arch/bitops.h>
 #include <uct/ib/base/ib_log.h>
@@ -868,7 +869,7 @@ ucs_status_t uct_rc_ep_reg_nc(uct_ep_h tl_ep, const uct_iov_t *iov,
 
     *md_p = md;
     *memh_p = memh;
-    return UCS_INPROGRESS;
+    return UCS_OK;
 }
 
 UCS_CLASS_INIT_FUNC(uct_rc_verbs_ep_t, uct_iface_h tl_iface)

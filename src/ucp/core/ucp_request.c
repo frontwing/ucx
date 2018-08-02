@@ -198,17 +198,11 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
     case UCP_DATATYPE_STRIDE_R:
         /* If this is not the first time - just update the pointers and GO */
         reusable = UCP_DT_GET_REUSABLE(datatype);
-        if (reusable->stride_memh != UCT_MEM_HANDLE_NULL) {
+        if (reusable->nc_memh != UCT_MEM_HANDLE_NULL) {
             if (ucs_unlikely(reusable->nc_status != UCS_OK)) {
                 return status;
             }
-
-            uct_md_attr = &context->tl_mds[mdi].attr;
-            if (uct_md_attr->cap.flags & UCT_MD_FLAG_REG_NC) {
-                status = ucp_dt_reusable_update(ep, buffer, length, datatype, state);
-                state->dt.stride.contig_memh = reusable->nc_memh;
-            }
-            state->dt.stride.memh = reusable->stride_memh;
+            state->dt.stride.contig_memh = reusable->nc_memh;
             break;
         }
 
@@ -216,6 +210,8 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
         extent = ucp_dt_extent(datatype, state->dt.stride.count, NULL, NULL);
         status = uct_md_mem_reg(uct_md, buffer, extent, 0, &state->dt.stride.memh);
 
+        /* backup the original buffer MR */
+        reusable->stride_memh = state->dt.stride.memh;
         /* If non-contiguous bind is not supported - use the existing mapping */
         uct_md_attr = &context->tl_mds[mdi].attr;
         if (!(uct_md_attr->cap.flags & UCT_MD_FLAG_REG_NC)) {
@@ -260,17 +256,14 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
     case UCP_DATATYPE_IOV_R:
         /* If this is not the first time - just update the pointers and GO */
         reusable = UCP_DT_GET_REUSABLE(datatype);
-        if (reusable->stride_memh != UCT_MEM_HANDLE_NULL) {
+        if (reusable->nc_memh != UCT_MEM_HANDLE_NULL) {
             if (ucs_unlikely(reusable->nc_status != UCS_OK)) {
                 return status;
             }
 
             uct_md_attr = &context->tl_mds[mdi].attr;
-            if (uct_md_attr->cap.flags & UCT_MD_FLAG_REG_NC) {
-                status = ucp_dt_reusable_update(ep, buffer, length, datatype, state);
-                state->dt.iov.contig_memh = reusable->nc_memh;
-            }
-            state->dt.iov.memh = reusable->stride_memh;
+            state->dt.iov.contig_memh = reusable->nc_memh;
+            state->dt.iov.memh = reusable->iov_memh;
             break;
         }
 
@@ -283,9 +276,9 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_request_memory_reg,
             goto err;
         }
         for (iov_it = 0; iov_it < iovcnt; ++iov_it) {
-            size_t iov_len = ucp_dt_extent(iov->dt, iov->count, NULL, NULL);
+            size_t iov_len = ucp_dt_extent(iov[iov_it].dt, iov[iov_it].count, NULL, NULL);
             if (iov_len) {
-                status = uct_md_mem_reg(uct_md, iov->buffer, iov_len, 0,
+                status = uct_md_mem_reg(uct_md, iov[iov_it].buffer, iov_len, 0,
                                         &memh[iov_it]);
                 if (status != UCS_OK) {
                     /* unregister previously registered memory */

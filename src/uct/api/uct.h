@@ -1636,7 +1636,6 @@ UCT_INLINE_API ucs_status_t uct_ep_mem_reg_nc(uct_ep_h ep, const uct_iov_t *iov,
     return ep->iface->ops.ep_mem_reg_nc(ep, iov, iovcnt, md_p, memh_p, comp);
 }
 
-
 /**
  * @ingroup UCT_AMO
  * @brief
