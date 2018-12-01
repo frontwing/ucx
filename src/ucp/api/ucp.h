@@ -108,6 +108,15 @@ BEGIN_C_DECLS
  */
 
 
+ /**
+ * @defgroup UCP_GROUP UCP Group
+ * @ingroup UCP_API
+ * @{
+ * UCP Group routines
+ * @}
+ */
+
+
 /**
  * @ingroup UCP_CONTEXT
  * @brief UCP context parameters field mask.
@@ -144,7 +153,9 @@ enum ucp_feature {
                                            operations support */
     UCP_FEATURE_WAKEUP = UCS_BIT(4),  /**< Request interrupt notification
                                            support */
-    UCP_FEATURE_STREAM = UCS_BIT(5)   /**< Request stream support */
+    UCP_FEATURE_STREAM = UCS_BIT(5),  /**< Request stream support */
+	UCP_FEATURE_COLL   = UCS_BIT(6)   /**< Request Collective operations
+                                           support */
 };
 
 
@@ -223,7 +234,8 @@ enum ucp_ep_params_field {
     UCP_EP_PARAM_FIELD_USER_DATA         = UCS_BIT(3), /**< User data pointer */
     UCP_EP_PARAM_FIELD_SOCK_ADDR         = UCS_BIT(4), /**< Socket address field */
     UCP_EP_PARAM_FIELD_FLAGS             = UCS_BIT(5), /**< Endpoint flags */
-    UCP_EP_PARAM_FIELD_CONN_REQUEST      = UCS_BIT(6)  /**< Connection request field */
+    UCP_EP_PARAM_FIELD_CONN_REQUEST      = UCS_BIT(6), /**< Connection request field */
+    UCP_EP_PARAM_FIELD_CUSTOM_UUID       = UCS_BIT(7)  /**< Custom hash key for lookup */
 };
 
 
@@ -336,6 +348,32 @@ enum ucp_worker_attr_field {
     UCP_WORKER_ATTR_FIELD_THREAD_MODE   = UCS_BIT(0), /**< UCP thread mode */
     UCP_WORKER_ATTR_FIELD_ADDRESS       = UCS_BIT(1), /**< UCP address */
     UCP_WORKER_ATTR_FIELD_ADDRESS_FLAGS = UCS_BIT(2)  /**< UCP address flags */
+};
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief UCP group collective operation description.
+ *
+ * The enumeration allows specifying modifiers to describe the requested
+ * collective operation, as part of @ref ucp_group_collective_params_t
+ * passed to @ref ucc_group_collective_start .
+ */
+enum ucp_group_collective_modifiers {
+    /* Network Pattern Considerations */
+    UCP_GROUP_COLLECTIVE_MODIFIER_SINGLE_SOURCE      = UCS_BIT( 0), /* otherwise from all */
+    UCP_GROUP_COLLECTIVE_MODIFIER_SINGLE_DESTINATION = UCS_BIT( 1), /* otherwise to all */
+    UCP_GROUP_COLLECTIVE_MODIFIER_AGGREGATE          = UCS_BIT( 2), /* otherwise gather */
+    UCP_GROUP_COLLECTIVE_MODIFIER_BROADCAST          = UCS_BIT( 3), /* otherwise scatter */
+    UCP_GROUP_COLLECTIVE_MODIFIER_VARIABLE_LENGTH    = UCS_BIT( 4), /* otherwise fixed length */
+    UCP_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_PARTIAL  = UCS_BIT( 5), /* MPI_Scan */
+    UCP_GROUP_COLLECTIVE_MODIFIER_NEIGHBOR           = UCS_BIT( 6), /* Neighbor collectives */
+
+    /* Buffer/Data Management Considerations */
+    UCP_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE   = UCS_BIT( 7), /* stable reduction */
+    UCP_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_EXCLUDE  = UCS_BIT( 8), /* MPI_Exscan */
+    UCP_GROUP_COLLECTIVE_MODIFIER_IN_PLACE           = UCS_BIT( 9), /* otherwise two buffers */
+    UCP_GROUP_COLLECTIVE_MODIFIER_VARIABLE_DATATYPE  = UCS_BIT(10), /* otherwise fixed data-type */
+    UCP_GROUP_COLLECTIVE_MODIFIER_PERSISTENT         = UCS_BIT(11)  /* otherwise destroy coll_h */
 };
 
 /**
@@ -886,6 +924,11 @@ typedef struct ucp_listener_params {
      * field_mask.
      */
     ucp_listener_conn_handler_t         conn_handler;
+
+    /**
+     *  TODO: rename & document...
+     */
+    uint64_t                            mpi_rank_ptr_t;
 } ucp_listener_params_t;
 
 
@@ -965,6 +1008,40 @@ typedef struct ucp_mem_map_params {
      unsigned               flags;
 } ucp_mem_map_params_t;
 
+enum ucp_group_rank_distance {
+	UCP_GROUP_RANK_DISTANCE_SELF = 0,
+	UCP_GROUP_RANK_DISTANCE_SOCKET,
+	UCP_GROUP_RANK_DISTANCE_HOST,
+	UCP_GROUP_RANK_DISTANCE_NET,
+	UCP_GROUP_RANK_DISTANCE_LAST
+};
+
+typedef struct ucp_group_params {
+    void            *cb_group_obj;  /* external group object for call-backs (MPI_Comm) */
+	ucp_group_rank_t my_rank_index; /* my index in the new group */
+    ucp_group_rank_t total_ranks;   /* number of process objects in the array */
+
+    /* For each rank, its distance is used to determine the topology */
+    enum ucp_group_rank_distance *rank_distance;
+
+    /* MPI passes its own reduction function, used for complex data-types */
+    void   (*mpi_reduce_f)(void *mpi_op, void *src, void *dst, unsigned count, void *mpi_dtype);
+
+    /* Callback function for address resolution (assumes MPI_PROC, to use MPI to connect) */
+    ucs_status_t (*mpi_get_ep_f)(void *cb_group_obj, ucp_group_rank_t rank, ucp_ep_h *ep_p);
+} ucp_group_params_t;
+
+typedef struct ucp_group_collective {
+    enum ucp_group_collective_modifiers flags;
+    ucp_group_rank_t                    root;       /* root rank number */
+    const void                         *sbuf;       /* data to submit */
+    void                               *rbuf;       /* buffer to receive the result */
+    size_t                              count;      /* item count */
+    ucp_datatype_t                      datatype;   /* item type */
+    void                               *cb_r_op;    /* external reduce op, for (MPI) callbacks */
+    void                               *cb_r_dtype; /* external reduce dtype, for (MPI) callbacks */
+    ucp_group_collective_callback_t     comp_cb;    /* completion callback */
+} ucp_group_collective_params_t;
 
 /**
  * @ingroup UCP_CONTEXT
@@ -1330,6 +1407,119 @@ void ucp_worker_release_address(ucp_worker_h worker, ucp_address_t *address);
  * @return Non-zero if any communication was progressed, zero otherwise.
  */
 unsigned ucp_worker_progress(ucp_worker_h worker);
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Create a group object.
+ *
+ * This routine allocates and initializes a @ref ucp_group_h "group" object.
+ * This routine is a "collective operation", meaning it has to be called for
+ * each worker participating in the group - before the first call on the group
+ * is invoked on any of those workers. The call does not contain a barrier,
+ * meaning a call on one worker can complete regardless of call on others.
+ *
+ * @note The group object is allocated within context of the calling thread
+ *
+ * @param [in] worker      Worker to create a group on top of.
+ * @param [in] params      User defined @ref ucp_group_params_t configurations for the
+ *                         @ref ucp_group_h "UCP group".
+ * @param [out] group_p    A pointer to the group object allocated by the
+ *                         UCP library
+ *
+ * @return Error code as defined by @ref ucs_status_t
+ */
+ucs_status_t ucp_group_create(ucp_worker_h worker,
+                              const ucp_group_params_t *params,
+                              ucp_group_h *group_p);
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Destroy a group object.
+ *
+ * This routine releases the resources associated with a @ref ucc_group_h
+ * "UCP group". This routine is also a "collective operation", similarly to
+ * @ref ucp_group_create, meaning it must be called on each worker participating
+ * in the group.
+ *
+ * @warning Once the UCP group handle is destroyed, it cannot be used with any
+ * UCP routine.
+ *
+ * The destroy process releases and shuts down all resources associated with
+ * the @ref ucp_group_h "group".
+ *
+ * @param [in]  group       Group object to destroy.
+ */
+void ucp_group_destroy(ucp_group_h group);
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Creates a collective operation on a group object.
+ *
+ * @param [in]  group       Group object to use.
+ * @param [in]  params      Collective operation parameters.
+ * @param [out] coll        Collective operation handle.
+ *
+ * @return Error code as defined by @ref ucs_status_t
+ */
+ucs_status_t ucp_group_collective_create(ucp_group_h group,
+                                         ucp_group_collective_params_t *params,
+                                         ucp_coll_h *coll);
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Starts a collective operation.
+ *
+ * @param [in]  coll        Collective operation handle.
+ *
+ * @return UCS_OK           - The collective operation was completed immediately.
+ * @return UCS_PTR_IS_ERR(_ptr) - The collective operation failed.
+ * @return otherwise        - Operation was scheduled for send and can be
+ *                          completed in any point in time. The request handle
+ *                          is returned to the application in order to track
+ *                          progress of the message. The application is
+ *                          responsible to release the handle using
+ *                          @ref ucp_request_free routine.
+ */
+ucs_status_ptr_t ucp_group_collective_start_nb(ucp_coll_h coll);
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Starts a collective operation.
+ *
+ * @param [in]  coll        Collective operation handle.
+ * @param [in]  req         Request handle allocated by the user. There should
+ *                          be at least UCP request size bytes of available
+ *                          space before the @a req. The size of UCP request
+ *                          can be obtained by @ref ucp_context_query function.
+ *
+ * @return UCS_OK           - The collective operation was completed immediately.
+ * @return UCS_INPROGRESS   - The collective was not completed and is in progress.
+ *                            @ref ucp_request_check_status() should be used to
+ *                            monitor @a req status.
+ * @return Error code as defined by @ref ucs_status_t
+ */
+ucs_status_t ucp_group_collective_start_nbr(ucp_coll_h coll, void *req);
+
+
+/**
+ * @ingroup UCP_GROUP
+ * @brief Destroys a collective operation handle.
+ *
+ * This is only required for persistent collectives, where the flag
+ * UCP_GROUP_COLLECTIVE_MODIFIER_PERSISTENT is passed when calling
+ * @ref ucp_group_collective_create. Otherwise, the handle is
+ * destroyed when the collective operation is completed.
+ *
+ * @param [in]  coll         Collective operation handle.
+ *
+ * @return Error code as defined by @ref ucs_status_t
+ */
+ucs_status_t ucp_group_collective_destroy(ucp_coll_h coll);
 
 
 /**

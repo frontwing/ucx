@@ -1484,22 +1484,28 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
         goto err_wakeup_cleanup;
     }
 
+    /* Init collective operations */
+    status = ucp_worker_groups_init(&worker->groups);
+    if (status != UCS_OK) {
+        goto err_close_ifaces;
+    }
+
     /* Open all resources as interfaces on this worker */
     status = ucp_worker_add_resource_ifaces(worker);
     if (status != UCS_OK) {
-        goto err_close_ifaces;
+        goto err_close_groups;
     }
 
     /* create mem type endponts */
     status = ucp_worker_create_mem_type_endpoints(worker);;
     if (status != UCS_OK) {
-        goto err_close_ifaces;
+        goto err_close_groups;
     }
 
     /* Init AM and registered memory pools */
     status = ucp_worker_init_mpools(worker);
     if (status != UCS_OK) {
-        goto err_close_ifaces;
+        goto err_close_groups;
     }
 
     /* Select atomic resources */
@@ -1513,6 +1519,8 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     *worker_p = worker;
     return UCS_OK;
 
+err_close_groups:
+	ucp_worker_groups_cleanup(&worker->groups);
 err_close_ifaces:
     ucp_worker_close_ifaces(worker);
     ucp_tag_match_cleanup(&worker->tm);
@@ -1553,6 +1561,7 @@ void ucp_worker_destroy(ucp_worker_h worker)
     ucp_worker_remove_am_handlers(worker);
     UCS_ASYNC_UNBLOCK(&worker->async);
 
+	ucp_worker_groups_cleanup(&worker->groups);
     ucs_mpool_cleanup(&worker->am_mp, 1);
     ucs_mpool_cleanup(&worker->reg_mp, 1);
     ucs_mpool_cleanup(&worker->rndv_frag_mp, 1);

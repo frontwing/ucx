@@ -313,6 +313,7 @@ AC_CONFIG_FILES([
                  src/ucp/api/ucp_version.h
                  src/ucp/core/ucp_version.c
                  src/ucm/Makefile
+                 src/adapters/Makefile
                  src/tools/info/Makefile
                  src/tools/perf/Makefile
                  src/tools/profile/Makefile

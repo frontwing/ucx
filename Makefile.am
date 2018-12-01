@@ -31,6 +31,7 @@ SUBDIRS = \
 	src/ucs \
 	src/uct \
 	src/ucp \
+	src/adapters \
 	src/tools/info \
 	src/tools/perf \
 	src/tools/profile \

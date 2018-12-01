@@ -39,6 +39,10 @@ typedef uint8_t                      ucp_lane_map_t;
 /* Connection sequence number */
 typedef uint16_t                     ucp_ep_conn_sn_t;
 
+/* Groups */
+typedef uint32_t                     ucp_coll_op_id_t;
+typedef uint32_t                     ucp_coll_group_id_t;
+
 /* Forward declarations */
 typedef struct ucp_request              ucp_request_t;
 typedef struct ucp_recv_desc            ucp_recv_desc_t;
@@ -50,6 +54,8 @@ typedef struct ucp_proto                ucp_proto_t;
 typedef struct ucp_worker_iface         ucp_worker_iface_t;
 typedef struct ucp_rma_proto            ucp_rma_proto_t;
 typedef struct ucp_amo_proto            ucp_amo_proto_t;
+typedef struct ucp_coll_step            ucp_coll_step_t;
+typedef struct ucp_coll_op              ucp_coll_op_t;
 
 
 /**

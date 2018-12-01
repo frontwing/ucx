@@ -20,6 +20,9 @@ nobase_dist_libucp_la_HEADERS = \
 	api/ucp.h
 
 noinst_HEADERS = \
+	coll/coll_ops.h \
+	coll/coll_group.h \
+	coll/coll_topo.h \
 	core/ucp_context.h \
 	core/ucp_ep.h \
 	core/ucp_ep.inl \
@@ -58,6 +61,12 @@ noinst_HEADERS                += api/ucpx.h
 endif
 
 libucp_la_SOURCES = \
+	coll/coll_ops.c \
+	coll/coll_group.c \
+	coll/coll_topo_recursive.c \
+	coll/coll_topo_neighbor.c \
+	coll/coll_topo_tree.c \
+	coll/coll_topo.c \
 	core/ucp_context.c \
 	core/ucp_ep.c \
 	core/ucp_listener.c \

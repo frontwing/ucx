@@ -41,12 +41,12 @@ ucp_tag_get_rndv_threshold(const ucp_request_t *req, size_t count,
     return SIZE_MAX;
 }
 
-static UCS_F_ALWAYS_INLINE ucs_status_ptr_t
-ucp_tag_send_req(ucp_request_t *req, size_t dt_count,
+static UCS_F_ALWAYS_INLINE ucs_status_t
+ucp_tag_send_req_prepare(ucp_request_t *req, size_t dt_count,
                  const ucp_ep_msg_config_t* msg_config,
                  size_t rndv_rma_thresh, size_t rndv_am_thresh,
-                 ucp_send_callback_t cb, const ucp_proto_t *proto,
-                 int enable_zcopy)
+				 ucp_send_callback_t cb, const ucp_proto_t *proto,
+				 int enable_zcopy)
 {
     size_t rndv_thresh  = ucp_tag_get_rndv_threshold(req, dt_count,
                                                      msg_config->max_iov,
@@ -77,12 +77,12 @@ ucp_tag_send_req(ucp_request_t *req, size_t dt_count,
             ucs_assert(req->send.length >= rndv_thresh);
             status = ucp_tag_send_start_rndv(req);
             if (status != UCS_OK) {
-                return UCS_STATUS_PTR(status);
+                return status;
             }
 
             UCP_EP_STAT_TAG_OP(req->send.ep, RNDV);
         } else {
-            return UCS_STATUS_PTR(status);
+            return status;
         }
     }
 
@@ -92,12 +92,20 @@ ucp_tag_send_req(ucp_request_t *req, size_t dt_count,
         UCP_EP_STAT_TAG_OP(req->send.ep, EAGER);
     }
 
+    if (enable_zcopy) {
+        ucp_request_set_callback(req, send.cb, cb)
+    }
+    return UCS_OK;
+}
+
+static UCS_F_ALWAYS_INLINE ucs_status_ptr_t
+ucp_tag_send_req_launch(ucp_request_t *req, int enable_zcopy) {
     /*
      * Start the request.
      * If it is completed immediately, release the request and return the status.
      * Otherwise, return the request.
      */
-    status = ucp_request_send(req, 0);
+	ucs_status_t status = ucp_request_send(req, 0);
     if (req->flags & UCP_REQUEST_FLAG_COMPLETED) {
         ucs_trace_req("releasing send request %p, returning status %s", req,
                       ucs_status_string(status));
@@ -107,12 +115,18 @@ ucp_tag_send_req(ucp_request_t *req, size_t dt_count,
         return UCS_STATUS_PTR(status);
     }
 
-    if (enable_zcopy) {
-        ucp_request_set_callback(req, send.cb, cb)
-    }
-
     ucs_trace_req("returning send request %p", req);
     return req + 1;
+}
+
+ucs_status_t
+ucp_tag_send_req_wrapper(ucp_request_t *req, size_t dt_count,
+                 const ucp_ep_msg_config_t* msg_config,
+                 size_t rndv_rma_thresh, size_t rndv_am_thresh,
+                 ucp_send_callback_t cb, const ucp_proto_t *proto,
+                 int enable_zcopy)
+{
+	return ucp_tag_send_req_prepare(req, dt_count, msg_config, rndv_rma_thresh, rndv_am_thresh, cb, proto, enable_zcopy);
 }
 
 static UCS_F_ALWAYS_INLINE void
@@ -133,6 +147,12 @@ ucp_tag_send_req_init(ucp_request_t* req, ucp_ep_h ep, const void* buffer,
                                req->send.length, &req->send.mem_type);
     req->send.lane         = ucp_ep_config(ep)->tag.lane;
     req->send.pending_lane = UCP_NULL_LANE;
+}
+
+void ucp_tag_send_req_init_wrapper(ucp_request_t* req, ucp_ep_h ep, const void* buffer,
+		uintptr_t datatype, size_t count, ucp_tag_t tag, uint16_t flags)
+{
+	ucp_tag_send_req_init(req, ep, buffer, datatype, count, tag, flags);
 }
 
 static UCS_F_ALWAYS_INLINE ucs_status_t
@@ -200,10 +220,15 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_tag_send_nb,
 
     ucp_tag_send_req_init(req, ep, buffer, datatype, count, tag, 0);
 
-    ret = ucp_tag_send_req(req, count, &ucp_ep_config(ep)->tag.eager,
-                           ucp_ep_config(ep)->tag.rndv.rma_thresh,
-                           ucp_ep_config(ep)->tag.rndv.am_thresh,
-                           cb, ucp_ep_config(ep)->tag.proto, 1);
+    ret = UCS_STATUS_PTR(ucp_tag_send_req_prepare(req,
+    		count, &ucp_ep_config(ep)->tag.eager,
+			ucp_ep_config(ep)->tag.rndv.rma_thresh,
+			ucp_ep_config(ep)->tag.rndv.am_thresh,
+			cb, ucp_ep_config(ep)->tag.proto, 1));
+    if (ret == UCS_OK) {
+    	ret = ucp_tag_send_req_launch(req, 1);
+    }
+
 out:
     UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(ep->worker);
     return ret;
@@ -234,10 +259,14 @@ UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_send_nbr,
 
     ucp_tag_send_req_init(req, ep, buffer, datatype, count, tag, 0);
 
-    ret = ucp_tag_send_req(req, count, &ucp_ep_config(ep)->tag.eager,
-                           ucp_ep_config(ep)->tag.rndv_send_nbr.rma_thresh,
-                           ucp_ep_config(ep)->tag.rndv_send_nbr.am_thresh,
-                           NULL, ucp_ep_config(ep)->tag.proto, 0);
+    ret = UCS_STATUS_PTR(ucp_tag_send_req_prepare(req,
+    		count, &ucp_ep_config(ep)->tag.eager,
+			ucp_ep_config(ep)->tag.rndv_send_nbr.rma_thresh,
+			ucp_ep_config(ep)->tag.rndv_send_nbr.am_thresh,
+			NULL, ucp_ep_config(ep)->tag.proto, 0));
+    if (ret == UCS_OK) {
+    	ret = ucp_tag_send_req_launch(req, 0);
+    }
 
     UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(ep->worker);
 
@@ -283,10 +312,15 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucp_tag_send_sync_nb,
     ucp_tag_send_req_init(req, ep, buffer, datatype, count, tag,
                           UCP_REQUEST_FLAG_SYNC);
 
-    ret = ucp_tag_send_req(req, count, &ucp_ep_config(ep)->tag.eager,
-                           ucp_ep_config(ep)->tag.rndv.rma_thresh,
-                           ucp_ep_config(ep)->tag.rndv.am_thresh,
-                           cb, ucp_ep_config(ep)->tag.sync_proto, 1);
+    ret = UCS_STATUS_PTR(ucp_tag_send_req_prepare(req,
+    		count, &ucp_ep_config(ep)->tag.eager,
+			ucp_ep_config(ep)->tag.rndv.rma_thresh,
+			ucp_ep_config(ep)->tag.rndv.am_thresh,
+			cb, ucp_ep_config(ep)->tag.sync_proto, 1));
+    if (ret == UCS_OK) {
+    	ret = ucp_tag_send_req_launch(req, 1);
+    }
+
 out:
     UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(ep->worker);
     return ret;

@@ -123,6 +123,9 @@ int main(int argc, char **argv)
                 case 'w':
                     ucp_features |= UCP_FEATURE_WAKEUP;
                     break;
+                case 'l':
+                    ucp_features |= UCP_FEATURE_COLL;
+                    break;
                 case 'e':
                     ucp_ep_params.field_mask |= UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
                     ucp_ep_params.err_mode    = UCP_ERR_HANDLING_MODE_PEER;

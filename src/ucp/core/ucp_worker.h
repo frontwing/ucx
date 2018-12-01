@@ -14,6 +14,7 @@
 
 #include <ucp/proto/proto.h>
 #include <ucp/tag/tag_match.h>
+#include <ucp/coll/coll_group.h>
 #include <ucp/wireup/ep_match.h>
 #include <ucs/datastruct/mpool.h>
 #include <ucs/datastruct/queue_types.h>
@@ -214,6 +215,7 @@ typedef struct ucp_worker {
     ucs_mpool_t                   reg_mp;        /* Registered memory pool */
     ucs_mpool_t                   rndv_frag_mp;  /* Memory pool for RNDV fragments */
     ucp_tag_match_t               tm;            /* Tag-matching queues and offload info */
+    ucp_groups_t                  groups;        /* Groups and collectives context */
     ucp_ep_h                      mem_type_ep[UCT_MD_MEM_TYPE_LAST];/* memory type eps */
 
     UCS_STATS_NODE_DECLARE(stats);
