@@ -154,7 +154,7 @@ enum ucp_feature {
     UCP_FEATURE_WAKEUP = UCS_BIT(4),  /**< Request interrupt notification
                                            support */
     UCP_FEATURE_STREAM = UCS_BIT(5),  /**< Request stream support */
-	UCP_FEATURE_COLL   = UCS_BIT(6)   /**< Request Collective operations
+    UCP_FEATURE_COLL   = UCS_BIT(6)   /**< Request Collective operations
                                            support */
 };
 
@@ -229,13 +229,12 @@ enum ucp_ep_params_field {
                                                             peer */
     UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE = UCS_BIT(1), /**< Error handling mode.
                                                             @ref ucp_err_handling_mode_t */
-    UCP_EP_PARAM_FIELD_ERR_HANDLER       = UCS_BIT(2), /**< Handler to process
+    UCP_EP_PARAM_FIELD_ERR_HANDLER       = UCS_BIT(2), /**< Handler for process
                                                             transport level errors */
     UCP_EP_PARAM_FIELD_USER_DATA         = UCS_BIT(3), /**< User data pointer */
     UCP_EP_PARAM_FIELD_SOCK_ADDR         = UCS_BIT(4), /**< Socket address field */
     UCP_EP_PARAM_FIELD_FLAGS             = UCS_BIT(5), /**< Endpoint flags */
-    UCP_EP_PARAM_FIELD_CONN_REQUEST      = UCS_BIT(6), /**< Connection request field */
-    UCP_EP_PARAM_FIELD_CUSTOM_UUID       = UCS_BIT(7)  /**< Custom hash key for lookup */
+    UCP_EP_PARAM_FIELD_CONN_REQUEST      = UCS_BIT(6)  /**< Connection request field */
 };
 
 
@@ -924,11 +923,6 @@ typedef struct ucp_listener_params {
      * field_mask.
      */
     ucp_listener_conn_handler_t         conn_handler;
-
-    /**
-     *  TODO: rename & document...
-     */
-    uint64_t                            mpi_rank_ptr_t;
 } ucp_listener_params_t;
 
 
@@ -1008,32 +1002,31 @@ typedef struct ucp_mem_map_params {
      unsigned               flags;
 } ucp_mem_map_params_t;
 
-enum ucp_group_rank_distance {
-	UCP_GROUP_RANK_DISTANCE_SELF = 0,
-	UCP_GROUP_RANK_DISTANCE_SOCKET,
-	UCP_GROUP_RANK_DISTANCE_HOST,
-	UCP_GROUP_RANK_DISTANCE_NET,
-	UCP_GROUP_RANK_DISTANCE_LAST
+enum ucp_group_member_distance {
+    UCP_GROUP_MEMBER_DISTANCE_SELF = 0,
+    UCP_GROUP_MEMBER_DISTANCE_SOCKET,
+    UCP_GROUP_MEMBER_DISTANCE_HOST,
+    UCP_GROUP_MEMBER_DISTANCE_NET,
+    UCP_GROUP_MEMBER_DISTANCE_LAST
 };
 
 typedef struct ucp_group_params {
-    void            *cb_group_obj;  /* external group object for call-backs (MPI_Comm) */
-	ucp_group_rank_t my_rank_index; /* my index in the new group */
-    ucp_group_rank_t total_ranks;   /* number of process objects in the array */
+    ucp_group_member_index_t member_count; /* number of group members */
 
-    /* For each rank, its distance is used to determine the topology */
-    enum ucp_group_rank_distance *rank_distance;
+    /* For each member - its distance is used to determine the topology */
+    enum ucp_group_member_distance *distance;
 
     /* MPI passes its own reduction function, used for complex data-types */
     void   (*mpi_reduce_f)(void *mpi_op, void *src, void *dst, unsigned count, void *mpi_dtype);
 
-    /* Callback function for address resolution (assumes MPI_PROC, to use MPI to connect) */
-    ucs_status_t (*mpi_get_ep_f)(void *cb_group_obj, ucp_group_rank_t rank, ucp_ep_h *ep_p);
+    /* Callback function for connection establishment */
+    ucs_status_t (*mpi_get_ep_f)(void *cb_group_obj, ucp_group_member_index_t index, ucp_ep_h *ep_p);
+    void *cb_group_obj;  /* external group object for call-backs (MPI_Comm) */
 } ucp_group_params_t;
 
 typedef struct ucp_group_collective {
     enum ucp_group_collective_modifiers flags;
-    ucp_group_rank_t                    root;       /* root rank number */
+    ucp_group_member_index_t            root;       /* root member index */
     const void                         *sbuf;       /* data to submit */
     void                               *rbuf;       /* buffer to receive the result */
     size_t                              count;      /* item count */

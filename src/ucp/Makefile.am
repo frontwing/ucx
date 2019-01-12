@@ -17,6 +17,7 @@ nobase_dist_libucp_la_HEADERS = \
 	api/ucp_compat.h \
 	api/ucp_def.h \
 	api/ucp_version.h \
+	api/ucp_coll.h \
 	api/ucp.h
 
 noinst_HEADERS = \

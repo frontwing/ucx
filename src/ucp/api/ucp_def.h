@@ -258,7 +258,7 @@ typedef void                            *ucp_coll_h;
 
 /**
  * @ingroup UCP_GROUP
- * @brief UCP group peer identifier.
+ * @brief UCP group member index.
  *
  * UCP groups have multiple peers: remote worker objects acting as group members.
  * Each group member, including the local worker which was used to create the
@@ -266,7 +266,7 @@ typedef void                            *ucp_coll_h;
  * the number of peers in it. The same worker may have different identifiers
  * in different groups, identifiers which are passed by user during creation.
  */
-typedef uint32_t                         ucp_group_rank_t;
+typedef uint32_t                         ucp_group_member_index_t;
 
 
 /**

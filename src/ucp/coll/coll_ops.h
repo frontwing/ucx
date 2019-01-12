@@ -25,29 +25,29 @@
 #include "coll_topo.h"
 
 typedef void (*mpi_reduce_f)(void *mpi_op, void *src_buffer,
-	void *dst_buffer, unsigned dcount, void* mpi_datatype);
+    void *dst_buffer, unsigned dcount, void* mpi_datatype);
 extern mpi_reduce_f mpi_reduce;
 
 enum ucp_coll_step_flags {
-	UCP_COLL_STEP_FLAG_LENGTH_PER_REQUEST = UCS_BIT(0),
+    UCP_COLL_STEP_FLAG_LENGTH_PER_REQUEST = UCS_BIT(0),
 };
 
 
 typedef struct ucp_coll_step_req ucp_coll_step_req_t;
 struct ucp_coll_op;
 struct ucp_coll_step {
-	/**
-	 * This part is used during the execution of this step.
-	 */
+    /**
+     * This part is used during the execution of this step.
+     */
     unsigned long long             pending;  /* completion bit-field (for resends) */
     char                          *reduced;  /* temporary reduction/aggregation storage */
 
-	/**
-	 * This part is set once, based on the collective operation parameters.
-	 */
+    /**
+     * This part is set once, based on the collective operation parameters.
+     */
     struct ucp_coll_op            *op;       /* parent operation this step belongs to */
-	ucs_queue_elem_t               queue;    /* pointer to the next step in the queue */
-	unsigned                       flags;    /* modifiers for this step: enum ucp_coll_step_flags */
+    ucs_queue_elem_t               queue;    /* pointer to the next step in the queue */
+    unsigned                       flags;    /* modifiers for this step: enum ucp_coll_step_flags */
 
     /**
      * This is a special usage of callback arguments:
@@ -56,9 +56,9 @@ struct ucp_coll_step {
      * the index of each such send/recv request: the difference between the pointer and the "reqs".
      * This allows the callback function to set the corresponding bit in "pending", for example.
      */
-	unsigned                       send_req_cnt;
-	unsigned                       recv_req_cnt;
-	ucp_coll_step_req_t           *reqs;
+    unsigned                       send_req_cnt;
+    unsigned                       recv_req_cnt;
+    ucp_coll_step_req_t           *reqs;
 };
 
 
@@ -86,17 +86,17 @@ struct ucp_coll_op {
 
 
 ucs_status_t ucp_coll_step_init(ucp_coll_topo_phase_t *phs,
-		  					    ucp_group_collective_params_t *params,
-							    ucp_coll_step_t *step,
-							    ucp_coll_step_req_t **cb_ptr);
+                                  ucp_group_collective_params_t *params,
+                                ucp_coll_step_t *step,
+                                ucp_coll_step_req_t **cb_ptr);
 
 void ucp_coll_step_set_tag(ucp_coll_step_t *step, ucp_tag_t tag);
 
 ucs_status_t ucp_coll_step_execute(ucp_coll_step_t *step);
 
 ucs_status_t ucp_coll_op_create(ucp_worker_h worker, ucp_coll_topo_t *topo,
-		ucp_coll_group_id_t group_id, ucp_group_collective_params_t *params,
-		ucp_coll_op_t **new_op);
+        ucp_coll_group_id_t group_id, ucp_group_collective_params_t *params,
+        ucp_coll_op_t **new_op);
 
 ucs_status_t ucp_coll_op_recycle(ucp_coll_op_t *op);
 

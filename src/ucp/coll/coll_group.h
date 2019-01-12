@@ -8,8 +8,8 @@
 #include "coll_ops.h"
 
 typedef struct ucp_groups {
-	ucp_coll_group_id_t next_id;
-	ucs_list_link_t head;
+    ucp_coll_group_id_t next_id;
+    ucs_list_link_t head;
 } ucp_groups_t;
 
 /* Exported functions for the Worker */
