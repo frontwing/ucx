@@ -270,6 +270,15 @@ AS_IF([test "x$with_docs_only" == xyes],
                    [AM_CONDITIONAL([HAVE_EXAMPLES], [test "x$enable_examples" == "xyes"])],
                    [AM_CONDITIONAL([HAVE_EXAMPLES], [false])])
 
+     #
+     # Disable UCG - Group collective operations component
+     #
+     AC_ARG_ENABLE([ucg],
+                   [AS_HELP_STRING([--disable-ucg],
+                                   [Disable the group collective operations component, default: NO])],
+         [AM_CONDITIONAL([HAVE_UCG], [false])],
+         [AM_CONDITIONAL([HAVE_UCG], [test "x$enable_ucg" != "xno"])])
+
     ]) # Docs only
 
 
@@ -312,6 +321,9 @@ AC_CONFIG_FILES([
                  src/ucp/Makefile
                  src/ucp/api/ucp_version.h
                  src/ucp/core/ucp_version.c
+                 src/ucg/Makefile
+                 src/ucg/api/ucg_version.h
+                 src/ucg/core/version.c
                  src/ucm/Makefile
                  src/tools/info/Makefile
                  src/tools/perf/Makefile

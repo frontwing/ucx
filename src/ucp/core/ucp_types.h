@@ -39,10 +39,6 @@ typedef uint8_t                      ucp_lane_map_t;
 /* Connection sequence number */
 typedef uint16_t                     ucp_ep_conn_sn_t;
 
-/* Groups */
-typedef uint32_t                     ucp_coll_op_id_t;
-typedef uint32_t                     ucp_coll_group_id_t;
-
 /* Forward declarations */
 typedef struct ucp_request              ucp_request_t;
 typedef struct ucp_recv_desc            ucp_recv_desc_t;
@@ -54,8 +50,6 @@ typedef struct ucp_proto                ucp_proto_t;
 typedef struct ucp_worker_iface         ucp_worker_iface_t;
 typedef struct ucp_rma_proto            ucp_rma_proto_t;
 typedef struct ucp_amo_proto            ucp_amo_proto_t;
-typedef struct ucp_coll_step            ucp_coll_step_t;
-typedef struct ucp_coll_op              ucp_coll_op_t;
 
 
 /**
@@ -129,6 +123,11 @@ typedef void (*ucp_am_tracer_t)(ucp_worker_h worker, uct_am_trace_type_t type,
  * Internal callback for UCP requests
  */
 typedef void (*ucp_request_callback_t)(ucp_request_t *req);
+
+/**
+ * Internal callback for UCP requests for collective operations
+ */
+typedef void (*ucp_request_collective_callback_t)(void *request, ucs_status_t status);
 
 
 #endif

@@ -152,11 +152,11 @@ ucp_tag_recv_common(ucp_worker_h worker, void *buffer, size_t count,
 }
 
 void ucp_tag_recv_common_wrapper(ucp_worker_h worker, void *buffer, size_t count,
-		uintptr_t datatype, ucp_tag_t tag, ucp_tag_t tag_mask,
-		ucp_request_t *req, uint16_t req_flags, ucp_tag_recv_callback_t cb,
-		ucp_recv_desc_t *rdesc, const char *debug_name)
+        uintptr_t datatype, ucp_tag_t tag, ucp_tag_t tag_mask,
+        ucp_request_t *req, uint16_t req_flags, ucp_tag_recv_callback_t cb,
+        ucp_recv_desc_t *rdesc, const char *debug_name)
 {
-	ucp_tag_recv_common(worker, buffer, count, datatype, tag, tag_mask, req, req_flags, cb, rdesc, debug_name);
+    ucp_tag_recv_common(worker, buffer, count, datatype, tag, tag_mask, req, req_flags, cb, rdesc, debug_name);
 }
 
 UCS_PROFILE_FUNC(ucs_status_t, ucp_tag_recv_nbr,

@@ -1,10 +1,16 @@
-#include "coll_topo.h"
+/*
+* Copyright (C) Huawei Technologies Co., Ltd. 2018.  ALL RIGHTS RESERVED.
+* See file LICENSE for terms.
+*/
+
+#include "topo.h"
 
 #include <string.h>
 #include <ucs/debug/log.h>
 #include <ucs/debug/memtrack.h>
+#include <uct/api/uct_def.h>
 
-ucs_status_t ucp_coll_topo_recursive_create(struct ucp_coll_topo_params *params, ucp_coll_topo_t **topo_p)
+ucs_status_t ucg_topo_recursive_create(struct ucg_topo_params *params, ucg_topo_t **topo_p)
 {
     /* Calculate the number of recursive steps */
     unsigned proc_count = params->group_params->member_count;
@@ -25,23 +31,23 @@ ucs_status_t ucp_coll_topo_recursive_create(struct ucp_coll_topo_params *params,
     }
 
     /* Allocate memory resources */
-    size_t alloc_size = sizeof(ucp_coll_topo_t) +
-            step_idx * sizeof(ucp_coll_topo_phase_t);
+    size_t alloc_size = sizeof(ucg_topo_t) +
+            step_idx * sizeof(ucg_topo_phase_t);
     if (factor != 2) {
         /* Allocate extra space for the map's multiple endpoints */
         alloc_size += step_idx * (factor - 1) * sizeof(uct_ep_h);
     }
-    struct ucp_coll_topo *recursive = (struct ucp_coll_topo*)UCS_ALLOC_CHECK(alloc_size, "recursive topology");
-    ucp_coll_topo_phase_t *phase    = &recursive->phss[0];
+    struct ucg_topo *recursive = (struct ucg_topo*)UCS_ALLOC_CHECK(alloc_size, "recursive topology");
+    ucg_topo_phase_t *phase    = &recursive->phss[0];
     ucp_ep_h *next_ep               = (ucp_ep_h*)(phase + step_idx);
     recursive->phs_cnt              = step_idx;
     recursive->ep_cnt               = step_idx * 2 * (factor - 1);
 
     /* Find my own index */
-    ucp_group_member_index_t my_index = 0;
+    ucg_group_member_index_t my_index = 0;
     while ((my_index < proc_count) &&
            (params->group_params->distance[my_index] !=
-                   UCP_GROUP_MEMBER_DISTANCE_SELF)) {
+                   UCG_GROUP_MEMBER_DISTANCE_SELF)) {
         my_index++;
     }
 
@@ -61,7 +67,7 @@ ucs_status_t ucp_coll_topo_recursive_create(struct ucp_coll_topo_params *params,
         } else {
             phase->ep_cnt = factor - 1;
         }
-        phase->method = UCP_COLL_TOPO_METHOD_REDUCE_RECURSIVE;
+        phase->method = UCG_TOPO_METHOD_REDUCE_RECURSIVE;
 
         /* In each step, there are one or more peers */
         unsigned step_peer_idx;
@@ -71,9 +77,9 @@ ucs_status_t ucp_coll_topo_recursive_create(struct ucp_coll_topo_params *params,
             unsigned peer_index = step_base +
                     ((my_index - step_base + step_size * step_peer_idx) %
                      (step_size * factor));
-            if (ucp_coll_topo_connect(params->group, peer_index, next_ep)) {
+            if (ucg_topo_connect(params->group, peer_index, next_ep)) {
                 memset(next_ep, 0, alloc_size - ((char*)next_ep - (char*)recursive));
-                ucp_coll_topo_destroy(recursive);
+                ucg_topo_destroy(recursive);
                 return UCS_ERR_UNREACHABLE;
             }
         }

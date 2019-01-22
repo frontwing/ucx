@@ -1351,6 +1351,21 @@ out:
     return config_idx;
 }
 
+/* (temporary) forward declaration for UCG - need to find the place for it */
+#include <ucp/api/ucpx.h>
+ucp_context_component_init ucg_init;
+ucp_context_component_cleanup ucg_cleanup;
+void ucp_context_register_ucg(ucp_context_component_init init,
+                              ucp_context_component_cleanup cleanup)
+{
+    ucg_init = init;
+    ucg_cleanup = cleanup;
+}
+void* ucp_worker_get_groups_ctx(ucp_worker_h worker)
+{
+    return worker->groups;
+}
+
 ucs_status_t ucp_worker_create(ucp_context_h context,
                                const ucp_worker_params_t *params,
                                ucp_worker_h *worker_p)
@@ -1485,7 +1500,7 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     }
 
     /* Init collective operations */
-    status = ucp_worker_groups_init(&worker->groups);
+    if (ucg_init) status = ucg_init(&worker->groups);
     if (status != UCS_OK) {
         goto err_close_ifaces;
     }
@@ -1520,7 +1535,7 @@ ucs_status_t ucp_worker_create(ucp_context_h context,
     return UCS_OK;
 
 err_close_groups:
-	ucp_worker_groups_cleanup(&worker->groups);
+    if (ucg_cleanup) ucg_cleanup(worker->groups);
 err_close_ifaces:
     ucp_worker_close_ifaces(worker);
     ucp_tag_match_cleanup(&worker->tm);
@@ -1561,7 +1576,7 @@ void ucp_worker_destroy(ucp_worker_h worker)
     ucp_worker_remove_am_handlers(worker);
     UCS_ASYNC_UNBLOCK(&worker->async);
 
-	ucp_worker_groups_cleanup(&worker->groups);
+    if (ucg_cleanup) ucg_cleanup(worker->groups);
     ucs_mpool_cleanup(&worker->am_mp, 1);
     ucs_mpool_cleanup(&worker->reg_mp, 1);
     ucs_mpool_cleanup(&worker->rndv_frag_mp, 1);

@@ -256,9 +256,9 @@ struct ucp_request {
         } flush_worker;
 
         struct {
-            ucp_worker_h                    worker;   /* Worker to use for collective */
-            ucp_coll_op_t                  *op;       /* collective operation object */
-            ucp_group_collective_callback_t comp_cb;  /* completion call-back */
+            ucp_worker_h                      worker;   /* Worker to use for collective */
+            void                             *op;       /* collective operation object */
+            ucp_request_collective_callback_t comp_cb;  /* completion call-back */
         } collective;
     };
 };

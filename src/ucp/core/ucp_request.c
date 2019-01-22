@@ -382,3 +382,28 @@ void ucp_request_send_state_ff(ucp_request_t *req, ucs_status_t status)
         ucp_request_complete_send(req, status);
     }
 }
+
+ucs_status_t ucg_collective_req_init(void *op, ucp_worker_h worker,
+        ucp_request_collective_callback_t cb, ucp_request_t **req_p)
+{
+    ucp_request_t *req = *req_p;
+    if (req == NULL) {
+        req = ucp_request_get(worker);
+        if (ucs_unlikely(req == NULL)) {
+            return UCS_ERR_NO_MEMORY;
+        }
+
+        req->flags = UCP_REQUEST_FLAG_RELEASED;
+        *req_p = req + 1;
+    } else {
+        req--;
+        req->flags = 0;
+    }
+
+    req->collective.op = op;
+    req->collective.worker = worker;
+    if (cb) {
+        ucp_request_set_callback(req, collective.comp_cb, cb);
+    }
+    return UCS_OK;
+}

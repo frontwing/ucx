@@ -37,6 +37,10 @@ SUBDIRS = \
 	test/apps \
 	test/examples
 
+if HAVE_UCG
+SUBDIRS += src/ucg
+endif
+
 if HAVE_GTEST
 SUBDIRS += test/gtest
 endif
