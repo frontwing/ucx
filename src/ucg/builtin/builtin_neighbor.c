@@ -3,12 +3,11 @@
 * See file LICENSE for terms.
 */
 
-#include "topo.h"
-
 #include <string.h>
 #include <ucs/debug/log.h>
 #include <ucs/debug/memtrack.h>
 #include <uct/api/uct_def.h>
+#include "../base/ucg_plan.h"
 
 #define UCG_TOPO_CALC_CELL_UP(me, sqrt_total, total)                         \
        ((me + total - sqrt_total) % total)
@@ -23,7 +22,9 @@
        ucg_topo_connect((params)->group, UCG_TOPO_CALC_CELL##dir        \
                ((me), (dim_size), (total)), &(phs)->multi_eps[(ep_slot)])
 
-ucs_status_t ucg_topo_neighbor_create(struct ucg_topo_params *params, ucg_topo_t **topo_p)
+ucs_status_t ucg_topo_neighbor_create(const ucg_group_params_t *group_params,
+                                      const ucg_collective_params_t *coll_params,
+                                      ucg_topo_t **topo_p)
 {
     /* Check against what's actually supported */
     unsigned proc_count = params->group_params->member_count;

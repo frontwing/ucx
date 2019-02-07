@@ -15,6 +15,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define UCG_PLAN_COMPONENT_NAME_MAX  16
+
  /**
   * @ingroup UCG_GROUP
   * @brief UCG Group
@@ -69,5 +71,9 @@ typedef uint32_t                         ucg_group_member_index_t;
  *                        returned.
  */
 typedef void (*ucg_collective_callback_t)(void *request, ucs_status_t status);
+
+
+typedef struct ucg_topo_config           ucg_topo_config_t;
+typedef struct ucg_topo_comp            *ucg_topo_comp_h;
 
 #endif

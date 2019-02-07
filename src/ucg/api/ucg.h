@@ -29,7 +29,6 @@ void ucg_worker_groups_cleanup(void *groups_ctx);
 #define ucg_config_t                ucp_config_t
 #define ucg_address_t               ucp_address_t
 #define ucg_worker_h                ucp_worker_h
-#define ucg_request_t               ucp_request_t
 #define ucg_params_t                ucp_params_t
 #define ucg_context_attr_t          ucp_context_attr_t
 #define ucg_worker_attr_t           ucp_worker_attr_t
@@ -113,7 +112,7 @@ typedef struct ucg_group_params {
     enum ucg_group_member_distance *distance;
 
     /* MPI passes its own reduction function, used for complex data-types */
-    void   (*mpi_reduce_f)(void *mpi_op, void *src, void *dst, unsigned count, void *mpi_dtype);
+    void (*mpi_reduce_f)(void *mpi_op, void *src, void *dst, unsigned count, void *mpi_dtype);
 
     /* Callback function for connection establishment */
     ucs_status_t (*resolve_address_f)(void *cb_group_obj, ucg_group_member_index_t index, ucg_address_t **addr);
@@ -124,17 +123,15 @@ typedef struct ucg_group_params {
 
 typedef struct ucg_collective {
     enum ucg_collective_modifiers flags;
-    ucg_group_member_index_t            root;       /* root member index */
-    const void                         *sbuf;       /* data to submit */
-    void                               *rbuf;       /* buffer to receive the result */
-    size_t                              count;      /* item count */
-    ucp_datatype_t                      datatype;   /* item type */
-    void                               *cb_r_op;    /* external reduce op, for (MPI) callbacks */
-    void                               *cb_r_dtype; /* external reduce dtype, for (MPI) callbacks */
-    ucg_collective_callback_t     comp_cb;    /* completion callback */
+    ucg_group_member_index_t  root;       /* root member index */
+    const void               *sbuf;       /* data to submit */
+    void                     *rbuf;       /* buffer to receive the result */
+    size_t                    count;      /* item count */
+    ucp_datatype_t            datatype;   /* item type */
+    void                     *cb_r_op;    /* external reduce op, for (MPI) callbacks */
+    void                     *cb_r_dtype; /* external reduce dtype, for (MPI) callbacks */
+    ucg_collective_callback_t comp_cb;    /* completion callback */
 } ucg_collective_params_t;
-
-
 
 /**
  * @ingroup UCG_GROUP
@@ -192,8 +189,8 @@ void ucg_group_destroy(ucg_group_h group);
  * @return Error code as defined by @ref ucs_status_t
  */
 ucs_status_t ucg_collective_create(ucg_group_h group,
-                                         ucg_collective_params_t *params,
-                                         ucg_coll_h *coll);
+                                   ucg_collective_params_t *params,
+                                   ucg_coll_h *coll);
 
 
 /**

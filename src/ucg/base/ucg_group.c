@@ -1,10 +1,10 @@
 /*
-* Copyright (C) Huawei Technologies Co., Ltd. 2018.  ALL RIGHTS RESERVED.
+* Cplanyright (C) Huawei Technologies Co., Ltd. 2018.  ALL RIGHTS RESERVED.
 * See file LICENSE for terms.
 */
 
-#include "ucg/core/group.h"
-
+#include "ucg_plan.h"
+#include "ucg_group.h"
 #include <ucp/api/ucpx.h> // Temporary, for PoC purposes
 
 #include <ucp/core/ucp_ep.inl>
@@ -13,6 +13,7 @@
 #include <ucs/datastruct/list.h>
 #include <ucs/profile/profile.h>
 #include <ucs/debug/memtrack.h>
+#include "../api/ucg_plan_component.h"
 
 #define UCG_GROUP_COLLECTIVE_MODIFIER_MASK UCS_MASK(7)
 #define UCP_OP_MASK(flags) \
@@ -27,7 +28,7 @@
 typedef union ucg_req_tag {
     struct {
         ucg_group_id_t group_id;
-        ucg_op_id_t coll_id;
+        ucg_coll_id_t coll_id;
     };
     ucp_tag_t full; // TODO: check if there's a conflict with regular UCP tags
 } ucg_req_tag_t;
@@ -41,32 +42,33 @@ struct ucp_group {
     ucs_list_link_t cache[UCG_GROUP_COLLECTIVE_MODIFIER_MASK];
 
     ucg_worker_h             worker;       /* for conn. est. and progress calls */
-    ucg_op_id_t              next_id;      /* for the next collective operation */
+    ucg_coll_id_t            next_id;      /* for the next collective operation */
     ucg_group_id_t           group_id;     /* part of the message tag */
     ucs_queue_head_t         outstanding;  /* operations currently executed */
     ucs_list_link_t          list;         /* worker's group list */
     const ucg_group_params_t params;       /* parameters, for future connections */
 
-    ucg_topo_t         *topo[UCG_TOPO_LAST];         /* topology information */
+    ucg_plan_t              *plans[0];//UCG_TOPO_LAST];         /* plan information */
 };
 
-static inline ucs_status_t ucg_group_get_cached_op(ucg_group_h group,
+static inline ucs_status_t ucg_group_get_cached_plan(ucg_group_h group,
         ucg_collective_params_t *params,
-        ucg_op_t **instance_op)
+        ucg_plan_t **instance_plan)
 {
     ucs_list_link_t *cache_list = &group->cache[UCP_OP_MASK(params->flags)];
     if (ucs_list_is_empty(cache_list)) {
         return UCS_ERR_NO_ELEM;
     }
 
-    ucg_op_t *op;
-    ucs_list_for_each(op, cache_list, cache_list) {
-        if (memcmp(&op->params, params, sizeof(*params))) {
-            ucg_op_recycle(op);
+    /* TODO: restore!
+    ucg_plan_t *plan;
+    ucs_list_for_each(plan, cache_list, cache_list) {
+        if (memcmp(&plan->params, params, sizeof(*params))) {
+            ucg_plan_recycle(plan);
             return UCS_OK;
         }
     }
-
+    */
     return UCS_ERR_NO_ELEM;
 }
 
@@ -80,7 +82,6 @@ ucs_status_t ucg_group_create(ucg_worker_h worker,
 
     /* allocate a new group, and fill in the fields */
     struct ucp_group *new_group = UCS_ALLOC_CHECK(sizeof(struct ucp_group), "communicator");
-    mpi_reduce                  = params->mpi_reduce_f;
     new_group->group_id         = ctx->next_id++;
     new_group->worker           = worker;
     new_group->next_id          = 0;
@@ -92,39 +93,10 @@ ucs_status_t ucg_group_create(ucg_worker_h worker,
         ucs_list_head_init(&new_group->cache[c_idx]);
     }
 
-    /* prepare the topologies for collectives on this group */
-    ucs_status_t status;
-    enum ucg_topo_type type;
-    struct ucg_topo_params topo_params = {
-            .group_params     = params,
-            .group            = new_group
-    };
-
-    for (type = 0; ((type < UCG_TOPO_LAST) && (status == UCS_OK)); type++) {
-        /* Set type-specific parameters */
-        //TODO: use actual topo params (from config?)
-        topo_params.type = type;
-        if (type == UCG_TOPO_RECURSIVE) {
-            topo_params.recursive_factor = 2;
-        } else {
-            topo_params.tree_radix = 7;
-        }
-
-        status = ucg_topo_create(&topo_params, &new_group->topo[type]);
-    }
-
-    if (ucs_unlikely(status != UCS_OK)) {
-        while (type) {
-            ucg_topo_destroy(new_group->topo[--type]);
-        }
-        ucs_free(new_group);
-    } else {
-        ucs_list_add_head(&ctx->head, &new_group->list);
-    }
-
+    ucs_list_add_head(&ctx->head, &new_group->list);
     UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(worker);
     *group_p = new_group;
-    return status;
+    return UCS_OK;
 }
 
 void ucg_group_destroy(ucg_group_h group)
@@ -133,23 +105,24 @@ void ucg_group_destroy(ucg_group_h group)
 
     ucs_list_del(&group->list);
 
+    /* TODO:
     while(!ucs_queue_is_empty(&group->outstanding)) {
-        ucg_op_destroy(ucs_queue_pull_elem_non_empty(&group->outstanding,
-                ucg_op_t, queue));
+        ucg_plan_destroy(ucs_queue_pull_elem_non_empty(&group->outstanding,
+                ucg_plan_t, queue));
     }
 
     int i;
     for (i = 0; i < UCG_GROUP_COLLECTIVE_MODIFIER_MASK; i++) {
-        ucg_op_t *op, *tmp;
-        ucs_list_for_each_safe(op, tmp, &group->cache[i], cache_list) {
-            ucg_op_destroy(op);
+        ucg_plan_t *plan, *tmp;
+        ucs_list_for_each_safe(plan, tmp, &group->cache[i], cache_list) {
+            ucg_plan_destroy(plan);
         }
     }
 
-    enum ucg_topo_type type;
+    enum ucg_tplano_type type;
     for (type = 0; type < UCG_TOPO_LAST; type++) {
-        ucg_topo_destroy(group->topo[type]);
-    }
+        ucg_tplano_destroy(group->tplano[type]);
+    }*/
     UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(group->worker);
 }
 
@@ -160,39 +133,28 @@ UCS_PROFILE_FUNC(ucs_status_t, ucg_collective_create,
     UCP_WORKER_THREAD_CS_ENTER_CONDITIONAL(group->worker);
 
     /* Check the recycling/cache for this collective */
-    ucg_op_t **ret_op = (ucg_op_t**)coll;
-    ucs_status_t ret = ucg_group_get_cached_op(group, params, ret_op);
+    ucg_plan_t **ret_plan = (ucg_plan_t**)coll;
+    ucs_status_t ret = ucg_group_get_cached_plan(group, params, ret_plan);
     if (ret != UCS_ERR_NO_ELEM) {
         goto out;
     }
 
-    /* Create a new collective operation */
-    enum ucg_topo_type type = ucg_topo_choose_type(params->flags);
-    ret = ucg_op_create(group->worker, group->topo[type], group->group_id++, params, ret_op);
+    /* Select which plan to use for this collective operation */
+    ucg_plan_component_t *planc;
+    ret = ucg_plan_select_component(NULL, 0, &group->params, params, &planc);
     if (ret != UCS_OK) {
         goto out;
     }
 
-    (*ret_op)->group = group;
+    ret = ucg_plan(planc, &group->params, params, ret_plan); //TODO: pass group->worker,group->group_id++ ?
+    if (ret != UCS_OK) {
+        goto out;
+    }
+
+    // TODO: (*ret_plan)->group = group;
 out:
     UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(group->worker);
     return ret;
-}
-
-static UCS_F_ALWAYS_INLINE void
-ucg_collective_update_tags(ucg_op_t *op) {
-    ucg_group_h group = op->group;
-    ucg_req_tag_t tag = {
-            .group_id = group->group_id,
-            .coll_id  = group->next_id++
-    };
-
-    unsigned step_idx = 0;
-    ucg_step_t *step = &op->steps[0];
-    for (step_idx = 0; step_idx < op->step_cnt; step_idx++, step++) {
-        ucs_queue_push(&op->step_q, &step->queue);
-        ucg_step_set_tag(step, tag.full);
-    }
 }
 
 UCS_PROFILE_FUNC(ucs_status_ptr_t, ucg_collective_start_nb,
@@ -200,30 +162,30 @@ UCS_PROFILE_FUNC(ucs_status_ptr_t, ucg_collective_start_nb,
 {
     ucs_status_ptr_t ret;
     ucg_request_t *req = NULL;
-    ucg_op_t *op = (ucg_op_t*)coll;
-    ucg_worker_h worker = op->worker;
+    ucg_plan_t *plan = (ucg_plan_t*)coll;
+    ucg_worker_h worker = plan->worker;
 
     /* Since group was created - don't need UCP_CONTEXT_CHECK_FEATURE_FLAGS */
     UCP_WORKER_THREAD_CS_ENTER_CONDITIONAL(worker);
 
     ucs_trace_req("coll_start_nb coll %p", coll);
 
-    ret = (ucs_status_ptr_t)ucg_collective_req_init(op, worker, op->params.comp_cb, (void**)&req);
+    ret = (ucs_status_ptr_t)ucg_collective_req_init(plan, worker, plan->params.comp_cb, (void**)&req);
     if (ucs_likely(ret == UCS_OK)) {
         /* Generate the next tag to be used for messages */
-        ucg_collective_update_tags(op);
+        // TODO: ucg_collective_update_tags(plan);
 
         /* Start the first step of the collective operation */
-        ret = UCS_STATUS_PTR(ucg_step_execute(&op->steps[0]));
+        ret = UCS_STATUS_PTR(ucg_step_execute(&plan->steps[0]));
         if (ucs_likely(ret == UCS_OK)) {
             // TODO: make sure UCS_OK and UCS_INPROGRESS work correctly!
-            ret = op->cb_req = req;
+            ret = plan->cb_req = req;
         } else {
             // TODO: ucp_request_put(req);
         }
     }
 
-    UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(op->group->worker);
+    UCP_WORKER_THREAD_CS_EXIT_CONDITIONAL(plan->group->worker);
     return ret;
 }
 
@@ -231,35 +193,35 @@ UCS_PROFILE_FUNC(ucs_status_t, ucg_collective_start_nbr,
                  (coll, request), ucg_coll_h coll, void *request)
 {
     /* Fill in UCP request details */
-    ucg_op_t *op        = (ucg_op_t*)coll;
-    ucg_worker_h worker = op->worker;
+    ucg_plan_t *plan    = (ucg_plan_t*)coll;
+    ucg_worker_h worker = plan->worker;
 
     /* Since group was created - don't need UCP_CONTEXT_CHECK_FEATURE_FLAGS */
     UCP_WORKER_THREAD_CS_ENTER_CONDITIONAL(worker);
 
     ucs_status_t ret;
-    if (op->cb_req) {
+    if (plan->cb_req) {
         ucs_error("Only one instance of a persistent collective operation at a time is supported.");
         ret = UCS_ERR_UNSUPPORTED;
     } else {
-        ret = ucg_collective_req_init(op, worker, op->params.comp_cb, (void**)&request);
+        ret = ucg_collective_req_init(plan, worker, plan->params.comp_cb, (void**)&request);
         if (ucs_likely(ret == UCS_OK)) {
             ucs_trace_req("coll_start_nbr coll %p req %p", coll, request);
 
             /* Mark this operation as "in-use", and set the callback argument */
-            op->cb_req = request;
+            plan->cb_req = request;
 
             /* Generate the next tag to be used for messages */
-            ucg_collective_update_tags(op);
+            ucg_collective_update_tags(plan);
 
             /* Start the first step of the collective operation */
-            ret = ucg_step_execute(&op->steps[0]);
+            ret = ucg_step_execute(&plan->steps[0]);
 
             /* Add to group queue */
-            ucs_queue_push(&op->group->outstanding, &op->queue);
+            ucs_queue_push(&plan->group->outstanding, &plan->queue);
 
             /* Add to statistics */
-            // TODO: UCS_STATS_UPDATE_COUNTER(op->group, op->params.flags, 1);
+            // TODO: UCS_STATS_UPDATE_COUNTER(plan->group, plan->params.flags, 1);
         }
     }
 
@@ -269,7 +231,7 @@ UCS_PROFILE_FUNC(ucs_status_t, ucg_collective_start_nbr,
 
 ucs_status_t ucg_collective_destroy(ucg_coll_h coll)
 {
-    return ucg_op_recycle((ucg_op_t*)coll);
+    return ucg_plan_recycle((ucg_plan_t*)coll);
 }
 
 ucs_status_t ucg_worker_groups_init(void **groups_ctx)
@@ -293,14 +255,14 @@ void ucg_worker_groups_cleanup(void *groups_ctx)
     }
 }
 
-void ucg_group_recycle_op(ucg_group_h group, ucg_op_t *op)
+void ucg_group_recycle_plan(ucg_group_h group, ucg_plan_t *plan)
 {
-    ucs_list_link_t *cache_list = &group->cache[UCP_OP_MASK(op->params.flags)];
-    ucs_list_add_head(cache_list, &op->cache_list);
-    ucg_op_recycle(op);
+    ucs_list_link_t *cache_list = &group->cache[UCP_OP_MASK(plan->params.flags)];
+    ucs_list_add_head(cache_list, &plan->cache_list);
+    ucg_plan_recycle(plan);
 }
 
-ucs_status_t ucg_topo_connect(ucg_group_h group, ucg_group_member_index_t idx, ucp_ep_h *ep_p)
+ucs_status_t ucg_plan_connect(ucg_group_h group, ucg_group_member_index_t idx, ucp_ep_h *ep_p)
 {
     /* fill-in UCP connection parameters */
     ucp_address_t *remote_addr;

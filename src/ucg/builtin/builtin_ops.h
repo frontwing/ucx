@@ -23,11 +23,13 @@
  * (or it is fetched from cache) and that instance is executed.
  */
 
-#include "types.h"
-
-#include <ucg/topology/topo.h>
 #include <ucs/datastruct/list_types.h>
 #include <ucs/datastruct/queue_types.h>
+#include "ucg_plan.h"
+#include "ucg_types.h"
+
+#define UCG_MASK         (UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE - 1)
+#define UCG_GET_EPS(phs) ((phs)->ep_cnt == 1 ? &(phs)->single_ep : (phs)->multi_eps) // TODO: apply/use
 
 typedef void (*mpi_reduce_f)(void *mpi_op, void *src_buffer,
         void *dst_buffer, unsigned dcount, void* mpi_datatype);
@@ -53,6 +55,7 @@ struct ucg_step {
     struct ucg_op     *op;       /* parent operation this step belongs to */
     ucs_queue_elem_t   queue;    /* pointer to the next step in the queue */
     unsigned           flags;    /* modifiers for this step: enum ucg_step_flags */
+
 
     /**
      * This is a special usage of callback arguments:

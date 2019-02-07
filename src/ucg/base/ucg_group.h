@@ -11,7 +11,7 @@
 #include <ucs/datastruct/mpool.inl>
 #include <ucp/core/ucp_types.h>
 
-#include "ops.h"
+#include "ucg_types.h"
 
 typedef struct ucg_groups {
     ucg_group_id_t next_id;
@@ -19,6 +19,7 @@ typedef struct ucg_groups {
 } ucg_groups_t;
 
 /* Exported functions for the Worker */
+// TODO: register these functions with UCP
 //ucs_status_t ucg_worker_groups_init(ucg_groups_t **groups_ctx);
 //void ucg_worker_groups_cleanup(ucg_groups_t *groups_ctx);
 

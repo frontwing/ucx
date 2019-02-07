@@ -178,6 +178,7 @@ AS_IF([test "x$with_docs_only" == xyes],
      m4_include([config/m4/java.m4])
      m4_include([config/m4/cuda.m4])
      m4_include([src/uct/configure.m4])
+     m4_include([src/ucg/configure.m4])
      m4_include([test/gtest/configure.m4])
 
      #
@@ -292,10 +293,13 @@ DX_PDF_FEATURE(ON)
 DX_INIT_DOXYGEN([UCX],[doc/doxygen/ucxdox],[doc/doxygen-doc])
 
 #
-# Print which transports are built
+# Print which transports and group topologies are built
 #
 AC_MSG_NOTICE([Supported transports: $transports])
-AC_SUBST([build_modules], [${uct_modules}])
+AS_IF([test "x$enable_ucg" != "xno"],
+      [AC_MSG_NOTICE([Supported group topologies: $transports])
+       AC_SUBST([build_modules], [${uct_modules} ${ucg_modules}])],
+      [AC_SUBST([build_modules], [${uct_modules}])])
 
 #
 # Final output
@@ -321,9 +325,8 @@ AC_CONFIG_FILES([
                  src/ucp/Makefile
                  src/ucp/api/ucp_version.h
                  src/ucp/core/ucp_version.c
-                 src/ucg/Makefile
                  src/ucg/api/ucg_version.h
-                 src/ucg/core/version.c
+                 src/ucg/base/ucg_version.c
                  src/ucm/Makefile
                  src/tools/info/Makefile
                  src/tools/perf/Makefile
@@ -353,5 +356,8 @@ AC_MSG_NOTICE([Building documents only])
 [
 AC_MSG_NOTICE([UCX build configuration:])
 AC_MSG_NOTICE([      UCT modules:    <$(echo $uct_modules|tr ':' ' ') >])
+AS_IF([test "x$enable_ucg" != "xno"],
+      [AC_MSG_NOTICE([      UCG modules:    <$(echo $ucg_modules|tr ':' ' ') >])],
+      [])
 ])
 AC_MSG_NOTICE([=========================================================])

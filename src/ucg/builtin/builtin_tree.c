@@ -3,13 +3,12 @@
 * See file LICENSE for terms.
 */
 
-#include "topo.h"
-
 #include <math.h>
 #include <ucs/debug/log.h>
 #include <ucs/debug/assert.h>
 #include <ucs/debug/memtrack.h>
 #include <uct/api/uct_def.h>
+#include "../base/ucg_plan.h"
 
 #define MAX_PEERS (100)
 
@@ -75,11 +74,11 @@ static inline ucs_status_t ucg_topo_connect_tree(ucg_topo_t *tree,
                         : UCG_TOPO_METHOD_RECV);
     }
 
-    /* Phase #4: receive from parents */
+    /* Phase #4: send to children */
     if (has_children && status == UCS_OK) {
         /* Connect this phase to its peers */
         status = ucg_topo_connect_phase(phase++, params, &eps,
-                down, down_cnt, UCG_TOPO_METHOD_RECV);
+                down, down_cnt, UCG_TOPO_METHOD_SEND);
     }
 
     *alloc_size = (void*)eps - (void*)tree;
@@ -308,7 +307,9 @@ static ucs_status_t ucg_topo_tree_build(struct ucg_topo_params *params,
             alloc_size, up, up_cnt, down, down_cnt);
 }
 
-ucs_status_t ucg_topo_tree_create(struct ucg_topo_params *params, struct ucg_topo **topo_p)
+ucs_status_t ucg_builtin_tree_create(const ucg_group_params_t *group_params,
+                                     const ucg_collective_params_t *coll_params,
+                                     struct ucg_topo **topo_p)
 {
     /* Allocate worst-case memory footprint, resized down later */
     size_t alloc_size = sizeof(ucg_topo_t) +

@@ -3,7 +3,7 @@
 * See file LICENSE for terms.
 */
 
-#include "ops.h"
+#include "builtin_ops.h"
 
 #include <string.h>
 
@@ -15,6 +15,8 @@
 #include <ucp/core/ucp_request.inl>
 #include <ucp/tag/tag_match.inl>
 
+#include <ucp/api/ucp_def.h> // TODO: remove
+
 mpi_reduce_f mpi_reduce;
 
 #define UCG_STEP_IDX_IS_PENDING(step, idx) ((step)->pending & UCS_BIT(idx))
@@ -24,6 +26,9 @@ struct ucg_step_req {
     ucp_request_t    req;
     ucg_step_t *step;
 };
+
+
+
 
 static UCS_F_ALWAYS_INLINE void
 ucg_comp_request_completed(ucp_request_t *req, ucs_status_t status)
@@ -309,8 +314,8 @@ ucs_status_t ucg_step_create(ucg_topo_phase_t *phase,
         ucg_step_req_t **cb_ptr)
 {
     /* Select the right completion callback */ // TODO: support recv!
-    ucp_send_callback_t send_cb;
-    ucp_tag_recv_callback_t recv_cb;
+    ucp_send_callback_t send_cb = 0;
+    ucp_tag_recv_callback_t recv_cb = 0;
     ucs_status_t status = ucg_step_select_callbacks(phase,
             &send_cb, &recv_cb, params->count > 0);
     if (status != UCS_OK) {
@@ -460,4 +465,21 @@ ucs_status_t ucg_op_recycle(ucg_op_t *op)
 void ucg_op_destroy(ucg_op_t *op)
 {
     ucs_free(op);
+}
+
+
+static UCS_F_ALWAYS_INLINE void
+ucg_collective_update_tags(ucg_op_t *op) {
+    ucg_group_h group = op->group;
+    ucg_req_tag_t tag = {
+            .group_id = group->group_id,
+            .coll_id  = group->next_id++
+    };
+
+    unsigned step_idx = 0;
+    ucg_step_t *step = &op->steps[0];
+    for (step_idx = 0; step_idx < op->step_cnt; step_idx++, step++) {
+        ucs_queue_push(&op->step_q, &step->queue);
+        ucg_step_set_tag(step, tag.full);
+    }
 }

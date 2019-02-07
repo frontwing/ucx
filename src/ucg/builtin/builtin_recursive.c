@@ -3,14 +3,15 @@
 * See file LICENSE for terms.
 */
 
-#include "topo.h"
-
 #include <string.h>
 #include <ucs/debug/log.h>
 #include <ucs/debug/memtrack.h>
 #include <uct/api/uct_def.h>
+#include "../base/ucg_plan.h"
 
-ucs_status_t ucg_topo_recursive_create(struct ucg_topo_params *params, ucg_topo_t **topo_p)
+ucs_status_t ucg_builtin_recursive_create(const ucg_group_params_t *group_params,
+                                          const ucg_collective_params_t *coll_params,
+                                          ucg_topo_t **topo_p)
 {
     /* Calculate the number of recursive steps */
     unsigned proc_count = params->group_params->member_count;
